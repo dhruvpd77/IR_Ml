@@ -8,7 +8,7 @@ from accounts.models import Department, User, set_setting
 from core.bootstrap import ensure_reference_data
 from core.constants import ROLE_DEPARTMENT, Roles
 from jobcards.services import active_template
-from machines.models import Machine, ProductionStation
+from machines.models import Machine, MachinePlanningData, ProductionStation
 from machines.services import register_machine
 from workflow.engine import (
     approve_qc,
@@ -81,6 +81,13 @@ def sample_answers(user, phase_code):
 class Command(BaseCommand):
     help = "Create departments, phase users, and sample machines across the production flow."
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--fill",
+            action="store_true",
+            help="Add any missing demo machines even when the shop already has records.",
+        )
+
     def handle(self, *args, **options):
         ensure_reference_data()
         users = {}
@@ -103,13 +110,17 @@ class Command(BaseCommand):
                 user.set_password(PASSWORD)
                 user.save()
             users[username] = user
-        if Machine.objects.exists():
-            self.stdout.write("Machines are already in this database, so no extra fake records were added.")
+        if options["fill"] or not Machine.objects.exists():
+            added = self._machines(users)
+            if added:
+                set_setting("sample_data_loaded", "yes")
+                self._workbook()
+            self.stdout.write(self.style.SUCCESS(
+                f"Added {added} fake machines. Total machines now: {Machine.objects.count()}."
+            ))
         else:
-            self._machines(users)
-            set_setting("sample_data_loaded", "yes")
-            self._workbook()
-            self.stdout.write(self.style.SUCCESS(f"Added {Machine.objects.count()} fake machines."))
+            self.stdout.write("Machines are already in this database, so no extra fake records were added.")
+            self.stdout.write("Run python manage.py seed_demo --fill to add the missing demo machines.")
         self.stdout.write(self.style.SUCCESS("MQMS demo data is ready."))
         self.stdout.write(f"Password for every demo account: {PASSWORD}")
         self.stdout.write("Super admin: superadmin    Admin: admin")
@@ -132,12 +143,17 @@ class Command(BaseCommand):
             + [("done", age) for age in (18, 14, 9, 4, 2)]
             + [("rework_open", None), ("rework_qc", None)]
         )
+        existing = set(MachinePlanningData.objects.values_list("work_order", flat=True))
+        added = 0
         for index, (level, age) in enumerate(plan, start=1):
+            work_order = f"WO-26{100 + index}"
+            if work_order in existing:
+                continue
             model, kind = MODELS[index % len(MODELS)]
             machine = register_machine(
                 {
                     "company": companies[index % len(companies)],
-                    "work_order": f"WO-26{100 + index}",
+                    "work_order": work_order,
                     "ccn": f"CCN-{7000 + index}",
                     "model_description": model,
                     "machine_type": kind,
@@ -158,6 +174,8 @@ class Command(BaseCommand):
                     qc_approved_at=created + timedelta(days=3),
                     updated_at=created + timedelta(days=3),
                 )
+            added += 1
+        return added
 
     def _advance(self, machine, level, users, station, index):
         if level == "draft":

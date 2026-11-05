@@ -7,5 +7,5 @@ if [ -f "$HOME/.virtualenvs/irmqms/bin/activate" ]; then
   source "$HOME/.virtualenvs/irmqms/bin/activate"
 fi
 python manage.py migrate
-python manage.py seed_demo
+python manage.py seed_demo --fill
 python manage.py collectstatic --noinput
