@@ -71,29 +71,43 @@
             {% elif field.field_type == "integer" or field.field_type == "decimal" or field.field_type == "measurement" %}
               <div class="btn-row"><input class="field-input" type="number" step="any" name="f_{{ field.field_key }}" value="{{ current }}" {% if not editable %}disabled{% endif %}>{% if field.unit %}<span class="muted">{{ field.unit }}</span>{% endif %}</div>
             {% elif field.field_type == "video" %}
-              {% with existing=existing_files|getitem:field.field_key %}
-                {% if existing %}
-                  <div class="video-saved">
-                    {% for clip in existing %}
-                      <video class="clip" controls playsinline src="{% url 'jobcards:attachment' clip.pk %}"></video>
-                      {% if editable %}<label class="muted"><input type="checkbox" name="drop_video_{{ field.field_key }}" value="{{ clip.pk }}"> Remove {{ clip.original_name|default:"this video" }}</label>{% endif %}
-                    {% endfor %}
+              {% if editable and is_qc %}
+                <div class="video-box" data-video-box data-upload-url="{% url 'jobcards:qc_video_upload' machine.machine_id %}" data-remove-base="{% url 'jobcards:qc_video_upload' machine.machine_id %}">
+                  <div class="video-busy" data-video-busy hidden>
+                    <span class="spinner" aria-hidden="true"></span>
+                    <p data-video-busy-text>Processing video…</p>
                   </div>
-                {% endif %}
-              {% endwith %}
-              {% if editable %}
-                <div class="video-box" data-video-box>
+                  <div class="video-saved" data-video-saved>
+                    {% with existing=existing_files|getitem:field.field_key %}
+                      {% for clip in existing %}
+                        <div class="video-clip" data-video-clip="{{ clip.pk }}">
+                          <video class="clip" controls playsinline src="{% url 'jobcards:attachment' clip.pk %}"></video>
+                          <button class="btn-ghost" type="button" data-video-remove="{{ clip.pk }}">Remove {{ clip.original_name|default:"this video" }}</button>
+                        </div>
+                      {% endfor %}
+                    {% endwith %}
+                  </div>
                   <video class="clip" data-video-preview controls playsinline hidden></video>
                   <ul class="video-queue" data-video-list></ul>
-                  <p class="muted" data-video-status>Add one or more inspection videos. Each file can be up to 200 MB. The picture and sound are reduced when you save, and you can add another clip as well.</p>
-                  <div class="btn-row">
+                  <p class="muted" data-video-status>Record or choose the inspection video, then press Upload video. The save button below stores the rest of the QC card.</p>
+                  <div class="btn-row" data-video-actions>
                     <label class="btn-primary video-pick" data-video-camera-label>Record from camera<input type="file" accept="video/*" capture="environment" data-video-camera></label>
                     <button class="btn-primary" type="button" data-video-record hidden>Record from camera</button>
                     <button class="btn-danger" type="button" data-video-stop hidden>Stop</button>
                     <label class="btn-ghost video-pick">Choose from gallery<input type="file" accept="video/*" multiple data-video-gallery></label>
+                    <button class="btn-primary" type="button" data-video-upload disabled>Upload video</button>
                   </div>
-                  <input class="sr-only" type="file" name="file_{{ field.field_key }}" accept="video/*" multiple data-video-result>
                 </div>
+              {% else %}
+                {% with existing=existing_files|getitem:field.field_key %}
+                  {% if existing %}
+                    <div class="video-saved">
+                      {% for clip in existing %}
+                        <video class="clip" controls playsinline src="{% url 'jobcards:attachment' clip.pk %}"></video>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+                {% endwith %}
               {% endif %}
             {% elif field.field_type == "image" or field.field_type == "file" %}
               {% with existing=existing_files|getitem:field.field_key %}
@@ -110,7 +124,7 @@
     {% endfor %}
     <label class="field"><span class="field-label">Submission remarks</span><textarea class="field-input" name="remarks" rows="3" {% if not editable %}disabled{% endif %}>{{ saved_remarks }}</textarea></label>
     {% if qc_edit %}
-      <p class="muted">This QC record is already complete. Saving changes keeps the machine completed.</p>
+      <p class="muted">Save changes stores the notes on this completed QC record. Videos are uploaded with the Upload video button.</p>
       <div class="btn-row">
         <button class="btn-primary" name="action" value="update" type="submit">Save changes</button>
       </div>

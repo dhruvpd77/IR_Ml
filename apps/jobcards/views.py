@@ -1,8 +1,9 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.http import FileResponse
+from django.http import FileResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from accounts.decorators import management_required
@@ -20,7 +21,9 @@ from jobcards.services import (
     JobCardError,
     active_template,
     answers_from_request,
+    attach_qc_video,
     group_fields,
+    remove_qc_video,
     revise_submission,
     submission_form_state,
 )
@@ -252,6 +255,40 @@ def revise(request, pk):
             "field_errors": field_errors,
         },
     )
+
+
+def _qc_operator(request, machine_id):
+    if not can_operate_phase(request.user, PhaseCode.QC):
+        raise PermissionDenied
+    return _machine(request.user, machine_id)
+
+
+@login_required
+@require_POST
+def qc_video_upload(request, machine_id):
+    machine = _qc_operator(request, machine_id)
+    try:
+        stored = attach_qc_video(machine, request.user, request.FILES.get("video"))
+    except JobCardError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+    return JsonResponse(
+        {
+            "id": stored.pk,
+            "name": stored.original_name or "Inspection video",
+            "url": reverse("jobcards:attachment", args=[stored.pk]),
+        }
+    )
+
+
+@login_required
+@require_POST
+def qc_video_remove(request, machine_id, pk):
+    machine = _qc_operator(request, machine_id)
+    try:
+        remove_qc_video(machine, request.user, pk)
+    except JobCardError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+    return JsonResponse({"ok": True})
 
 
 @login_required

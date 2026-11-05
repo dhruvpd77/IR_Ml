@@ -125,8 +125,101 @@ def _validate_upload(field, upload):
     return ""
 
 
+def _qc_submission(machine):
+    from workflow.models import ProductionPhase
+
+    phase = ProductionPhase.objects.filter(code="QC").first()
+    state = machine.phase_states.filter(phase=phase).first() if phase else None
+    if state is None:
+        raise JobCardError("Quality Control is not on this machine.")
+    if state.status == "IN_PROGRESS":
+        submission = (
+            JobCardSubmission.objects.filter(
+                machine=machine,
+                phase_code="QC",
+                cycle=state.cycle,
+                status=JobCardSubmission.Status.DRAFT,
+            )
+            .order_by("-pk")
+            .first()
+        )
+        if submission is None:
+            submission = JobCardSubmission.objects.create(
+                machine=machine,
+                template=active_template("QC"),
+                phase_code="QC",
+                cycle=state.cycle,
+                status=JobCardSubmission.Status.DRAFT,
+            )
+        return submission
+    if state.status == "COMPLETED" and machine.status == "COMPLETED":
+        submission = (
+            JobCardSubmission.objects.filter(
+                machine=machine,
+                phase_code="QC",
+                cycle=state.cycle,
+                status=JobCardSubmission.Status.SUBMITTED,
+            )
+            .order_by("-revision", "-pk")
+            .first()
+        )
+        if submission is None:
+            raise JobCardError("There is no QC record to add a video to.")
+        return submission
+    raise JobCardError("Quality Control is not open for a video.")
+
+
+def _qc_video_field(submission):
+    field = submission.template.fields.filter(field_key="qc_video", is_active=True).first()
+    if field is None:
+        raise JobCardError("This QC card has no video field.")
+    return field
+
+
+def attach_qc_video(machine, user, upload):
+    if upload is None or not (getattr(upload, "size", 0) or 0):
+        raise JobCardError("Choose a video first.")
+    if (getattr(upload, "size", 0) or 0) > MAX_VIDEO:
+        raise JobCardError("Each video must be 200 MB or smaller.")
+    with transaction.atomic():
+        submission = _qc_submission(machine)
+        field = _qc_video_field(submission)
+        response = submission.responses.filter(field=field).first()
+        if response is None:
+            response = JobCardResponse.objects.create(submission=submission, field=field, value_text="Video attached")
+        if response.attachments.count() >= MAX_VIDEOS:
+            raise JobCardError(f"Attach up to {MAX_VIDEOS} videos.")
+        prepared = compress_video(upload)
+        error = _validate_upload(field, prepared)
+        if error:
+            raise JobCardError(error)
+        stored = _store_upload(machine, submission, response, field, prepared, user)
+        if response.value_text != "Video attached":
+            response.value_text = "Video attached"
+            response.save(update_fields=["value_text"])
+        log_audit(user, "qc.video", instance=machine, changes={"attachment": stored.pk})
+        return stored
+
+
+def remove_qc_video(machine, user, attachment_id):
+    with transaction.atomic():
+        submission = _qc_submission(machine)
+        attachment = MachineAttachment.objects.filter(
+            pk=attachment_id,
+            machine=machine,
+            submission=submission,
+            kind=MachineAttachment.Kind.VIDEO,
+        ).first()
+        if attachment is None:
+            raise JobCardError("That video is not on this QC record.")
+        if attachment.file:
+            attachment.file.delete(save=False)
+        attachment.delete()
+        log_audit(user, "qc.video.remove", instance=machine, changes={"attachment": attachment_id})
+
+
 def _store_upload(machine, submission, response, field, upload, user):
-    MachineAttachment.objects.create(
+    return MachineAttachment.objects.create(
         machine=machine,
         submission=submission,
         response=response,
