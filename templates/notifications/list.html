@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Notifications{% endblock %}
+{% block content %}
+<div class="page-head"><div><p class="eyebrow">Inbox</p><h1>Notifications</h1></div>
+  <form method="post" action="{% url 'notifications:read_all' %}">{% csrf_token %}<button class="btn-ghost" type="submit">Mark all read</button></form>
+</div>
+<section class="card">
+  {% for item in page %}
+    <article style="padding:12px 0;border-bottom:1px solid var(--line)">
+      <a href="{% url 'notifications:open' item.pk %}"><strong>{{ item.title }}</strong></a>
+      {% if not item.is_read %}<span class="badge badge-red">New</span>{% endif %}
+      <p class="muted">{{ item.body }}</p>
+      <p class="muted">{{ item.created_at|date:"d M Y, H:i" }}</p>
+    </article>
+  {% empty %}<p class="empty">You are caught up.</p>{% endfor %}
+</section>
+{% include "includes/pagination.html" %}
+{% endblock %}

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Allocate {{ machine.machine_id }}{% endblock %}
+{% block content %}
+<div class="summary-grid">
+  {% include "includes/machine_summary.html" %}
+  <form method="post" class="card stack">
+    <h1>Station allocation</h1>
+    {% csrf_token %}
+    {% for field in form %}
+      {% if field.name == "station" %}
+        <label class="field"><span class="field-label">Location</span>{% include "includes/station_select.html" with name="station" required=True %}{% if field.errors %}<p class="field-error">{{ field.errors|join:", " }}</p>{% endif %}</label>
+      {% else %}
+        {% include "includes/field.html" %}
+      {% endif %}
+    {% endfor %}
+    <button class="btn-primary" type="submit">Release to Assembly and Electrical</button>
+  </form>
+</div>
+{% endblock %}

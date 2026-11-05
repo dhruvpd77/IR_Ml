@@ -1,0 +1,21 @@
+{% load mqms %}
+<ol class="track">
+  {% for group in steps %}
+    <li class="track-stop {% if group.here %}is-here{% elif group.done %}is-done{% endif %}">
+      <span class="track-rail"></span>
+      <span class="track-dot"></span>
+      <div class="track-cards">
+        {% for phase in group.phases %}
+          <div class="track-card status-{{ phase.status }}">
+            <strong>{{ phase.name }}</strong>
+            <span class="{{ phase.status|badge_class }}">{{ phase.status_label }}</span>
+            <span class="muted">{% if phase.actor %}{{ phase.actor.display_name }}{% else %}Waiting{% endif %}</span>
+            {% if phase.can_pass %}
+              <form method="post" action="{% url 'machines:pass_phase' machine.machine_id phase.code %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="btn-primary" type="submit">Approved and go to next phase</button></form>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </li>
+  {% endfor %}
+</ol>

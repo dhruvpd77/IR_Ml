@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% load mqms %}
+{% block title %}Revise job card{% endblock %}
+{% block content %}
+<div class="page-head"><div><p class="eyebrow">Revision</p><h1>Correct {{ submission.machine.machine_id }} · {{ submission.phase_code }}</h1><p class="muted">The original submission stays on record. This saves revision {{ submission.revision|add:1 }}.</p></div></div>
+<form method="post" enctype="multipart/form-data" class="card">
+  {% csrf_token %}
+  <label class="field"><span class="field-label">Reason for correction</span><textarea class="field-input" name="reason" rows="3" required></textarea></label>
+  {% for group in groups %}
+    <h3 class="section-title">{{ group.name }}</h3>
+    {% for field in group.fields %}
+      {% with current=values|getitem:field.field_key %}
+        <div class="field" style="margin-bottom:12px">
+          <span class="field-label">{{ field.label }}</span>
+          {% if field.field_type == "signature" %}
+            <input class="field-input" name="f_{{ field.field_key }}" value="{{ current.name }}">
+            <label><input type="checkbox" name="sig_{{ field.field_key }}" {% if current.confirmed %}checked{% endif %}> Confirmed</label>
+          {% elif field.field_type == "pass_fail" %}
+            <div class="choice-row">
+              <label><input type="radio" name="f_{{ field.field_key }}" value="Pass" {% if current == "Pass" %}checked{% endif %}> Pass</label>
+              <label><input type="radio" name="f_{{ field.field_key }}" value="Fail" {% if current == "Fail" %}checked{% endif %}> Fail</label>
+              <label><input type="radio" name="f_{{ field.field_key }}" value="N/A" {% if current == "N/A" %}checked{% endif %}> N/A</label>
+            </div>
+          {% elif field.field_type == "yes_no" %}
+            <div class="choice-row">
+              <label><input type="radio" name="f_{{ field.field_key }}" value="Yes" {% if current == "Yes" %}checked{% endif %}> Yes</label>
+              <label><input type="radio" name="f_{{ field.field_key }}" value="No" {% if current == "No" %}checked{% endif %}> No</label>
+            </div>
+          {% elif field.field_type == "long_text" or field.field_type == "remarks" %}
+            <textarea class="field-input" name="f_{{ field.field_key }}" rows="3">{{ current }}</textarea>
+          {% elif field.field_type == "image" or field.field_type == "file" or field.field_type == "video" %}
+            <input class="file-input" type="file" name="file_{{ field.field_key }}">
+          {% else %}
+            <input class="field-input" name="f_{{ field.field_key }}" value="{{ current }}">
+          {% endif %}
+        </div>
+      {% endwith %}
+    {% endfor %}
+  {% endfor %}
+  <button class="btn-primary" type="submit">Save revision</button>
+</form>
+{% endblock %}

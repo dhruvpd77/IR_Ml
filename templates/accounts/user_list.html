@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% load mqms %}
+{% block title %}Users{% endblock %}
+{% block content %}
+<div class="page-head"><div><p class="eyebrow">Access</p><h1>Users</h1><p class="muted">Create as many people as you need in each phase. Super Admin and Admin can operate every phase.</p></div><a class="btn-primary" href="{% url 'accounts:user_create' %}">Add user</a></div>
+<form class="filters" method="get">
+  <input class="field-input" name="q" value="{{ query }}" placeholder="Name, username, employee ID">
+  <select class="field-input" name="role"><option value="">All roles</option>{% for value, label in roles %}<option value="{{ value }}" {% if selected_role == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  <button class="btn-ghost" type="submit">Filter</button>
+</form>
+<div class="table-wrap"><table class="data-table"><thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Department</th><th>Last login</th><th>Status</th><th></th></tr></thead><tbody>
+{% for person in page %}
+  <tr>
+    <td>{{ person.display_name }}</td><td>{{ person.username }}</td><td>{{ person.role_label }}</td><td>{{ person.department.name|default:"—" }}</td><td>{{ person.last_login|date:"d M Y, H:i"|default:"Never" }}</td>
+    <td><span class="badge {% if person.is_active %}badge-green{% else %}badge-slate{% endif %}">{{ person.is_active|yesno:"Active,Inactive" }}</span></td>
+    <td class="btn-row"><a href="{% url 'accounts:user_edit' person.pk %}">Edit</a><form method="post" action="{% url 'accounts:user_toggle' person.pk %}">{% csrf_token %}<button type="submit">{{ person.is_active|yesno:"Deactivate,Activate" }}</button></form></td>
+  </tr>
+{% endfor %}
+</tbody></table></div>
+{% include "includes/pagination.html" %}
+{% endblock %}

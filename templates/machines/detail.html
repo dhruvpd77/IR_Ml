@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% load mqms %}
+{% block title %}{{ machine.machine_id }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="crumbs"><a href="{% url 'machines:list' %}">Machines</a> / {{ machine.machine_id }}</p>
+    <p class="eyebrow">{{ pipeline }}</p>
+    <h1>{{ machine.machine_id }}</h1>
+  </div>
+  <div class="btn-row no-print">
+    {% if can_edit %}<a class="btn-ghost" href="{% url 'machines:edit' machine.machine_id %}">Edit</a>{% endif %}
+    {% if can_delete %}<form method="post" action="{% url 'machines:delete' machine.machine_id %}" data-confirm="Delete {{ machine.machine_id }}? The machine and its job cards will be removed.">{% csrf_token %}<button class="btn-danger" type="submit">Delete</button></form>{% endif %}
+    <a class="btn-ghost" href="{% url 'reports:machine_excel' machine.machine_id %}">Excel</a>
+    <a class="btn-primary" href="{% url 'reports:machine_pdf' machine.machine_id %}">Job card PDF</a>
+  </div>
+</div>
+{% if stage_note %}<p class="message message-warning">{{ stage_note }} <a href="{% url 'machines:detail' machine.machine_id %}">Show the full job card</a></p>{% endif %}
+{% include "includes/job_card.html" %}
+
+<div class="summary-grid">
+  <div class="stack">
+    {% include "includes/machine_summary.html" %}
+    <section class="card">
+      <div class="progress"><span style="width: {{ progress }}%"></span></div>
+      <p class="muted">{{ progress }}% of phases completed</p>
+      {% if machine.qc_approved_at %}<p>Released {{ machine.qc_approved_at|date:"d M Y, H:i" }} by {{ machine.qc_approved_by.display_name }}</p>{% endif %}
+      {% if machine.is_under_rework %}<p><span class="badge badge-red">Rework cycle {{ machine.rework_count }}</span></p>{% endif %}
+    </section>
+  </div>
+  <section class="card">
+    <h3>Track</h3>
+    <p class="muted">The red stop is the phase this machine is in now.</p>
+    {% include "includes/track.html" %}
+    {% if actions %}
+      <div class="btn-row" style="margin-top:14px">
+        {% for action in actions %}<a class="btn-primary" href="{{ action.href }}">{{ action.label }}</a>{% endfor %}
+      </div>
+    {% endif %}
+    {% if can_submit_planning %}
+      <form method="post" action="{% url 'machines:submit' machine.machine_id %}" data-confirm="Submit this machine to the production leader?" style="margin-top:12px">{% csrf_token %}<button class="btn-primary" type="submit">Submit to production</button></form>
+    {% endif %}
+  </section>
+</div>
+
+<div class="two-col" style="margin-top:16px">
+  <section class="card">
+    <h3>Timeline</h3>
+    <ul class="timeline">
+      {% for event in events %}
+        <li><span class="dot"></span><div><strong>{{ event|event_title }}</strong><p class="muted">{{ event.created_at|date:"d M Y, H:i" }} · {{ event.actor.display_name|default:"System" }}</p>{% if event.remarks %}<p>{{ event.remarks }}</p>{% endif %}</div></li>
+      {% endfor %}
+    </ul>
+  </section>
+  <div class="stack">
+    <section class="card">
+      <h3>Rework</h3>
+      {% for item in reworks %}
+        <p><a href="{% url 'rework:detail' item.pk %}">{{ item.rework_code }}</a> · {{ item.assigned_phase.name }} · <span class="{{ item.status|badge_class }}">{{ item.get_status_display }}</span></p>
+        <p>{{ item.reason }}</p>
+      {% empty %}<p class="muted">No rework on this machine.</p>{% endfor %}
+      {% if can_reject %}
+        <a class="btn-danger" href="{% url 'rework:create' machine.machine_id %}">Raise rework</a>
+      {% endif %}
+    </section>
+    <section class="card">
+      <h3>Notes</h3>
+      {% for note in notes %}<p><strong>{{ note.author.display_name|default:"User" }}</strong> · {{ note.created_at|date:"d M, H:i" }}<br>{{ note.body }}</p>{% empty %}<p class="muted">No notes yet.</p>{% endfor %}
+      <form method="post" action="{% url 'machines:add_note' machine.machine_id %}" class="stack">{% csrf_token %}<textarea class="field-input" name="body" rows="3" placeholder="Add a shop-floor note"></textarea><button class="btn-ghost" type="submit">Add note</button></form>
+    </section>
+    <section class="card">
+      <h3>Files</h3>
+      {% for file in attachments %}
+        {% if file.kind == "video" %}
+          <video class="clip" controls playsinline src="{% url 'jobcards:attachment' file.pk %}"></video>
+          <p class="muted">{{ file.original_name|default:file.caption }}</p>
+        {% elif file.kind == "image" %}
+          <p><a href="{% url 'jobcards:attachment' file.pk %}"><img class="clip" src="{% url 'jobcards:attachment' file.pk %}" alt="{{ file.original_name|default:file.caption }}"></a></p>
+        {% else %}
+          <p><a href="{% url 'jobcards:attachment' file.pk %}">{{ file.original_name|default:file.caption }}</a></p>
+        {% endif %}
+      {% empty %}<p class="muted">No files uploaded.</p>{% endfor %}
+    </section>
+  </div>
+</div>
+{% endblock %}

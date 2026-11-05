@@ -1,0 +1,14 @@
+[Unit]
+Description=Ingersoll Rand MQMS
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/ir_mqms
+EnvironmentFile=/var/www/ir_mqms/.env
+ExecStart=/var/www/ir_mqms/.venv/bin/gunicorn config.wsgi:application --bind 127.0.0.1:8000 --workers 3 --timeout 120
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

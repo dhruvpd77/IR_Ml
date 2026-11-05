@@ -1,0 +1,80 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · Ingersoll Rand MQMS</title>
+  <link rel="icon" href="{% static 'favicon.svg' %}">
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=2">
+</head>
+<body class="landing">
+  <div class="stage">
+    <div class="stage-grid" aria-hidden="true"></div>
+    <div class="stage-glow" aria-hidden="true"></div>
+    <div class="stage-beam" aria-hidden="true"></div>
+    <header class="stage-bar">
+      <img src="{% static 'img/ir-logo.jpg' %}" alt="Ingersoll Rand">
+      <p>Production MQMS<span>Naroda · Ahmedabad</span></p>
+    </header>
+    <main class="stage-main">
+      <section class="stage-copy">
+        <p class="stage-kicker">Machine production tracking</p>
+        <h1>
+          <span>Every compressor.</span>
+          <span>One digital record.</span>
+        </h1>
+        <p class="stage-lead">One machine. One record. Assembly and Electrical run side by side. Testing opens only when both are done.</p>
+        <div class="rail" aria-hidden="true">
+          <div class="rail-track"><i></i></div>
+          <ol>
+            <li style="--d:0">Planning</li>
+            <li style="--d:1">Serial</li>
+            <li style="--d:2">Station</li>
+            <li style="--d:3">Assembly</li>
+            <li style="--d:4">Electrical</li>
+            <li style="--d:5">Testing</li>
+            <li style="--d:6">End of line</li>
+            <li style="--d:7">Quality</li>
+          </ol>
+        </div>
+      </section>
+      <section class="console">
+        <p class="stage-kicker">Secure sign in</p>
+        <h2>Enter the floor</h2>
+        <form method="post" class="stack">
+          {% csrf_token %}
+          {% if request.GET.next %}<input type="hidden" name="next" value="{{ request.GET.next }}">{% endif %}
+          {% if form.non_field_errors %}<div class="message message-error">{{ form.non_field_errors }}</div>{% endif %}
+          {% for field in form %}{% include "includes/field.html" %}{% endfor %}
+          <button class="btn-primary" type="submit">Sign in</button>
+        </form>
+        {% if quick_accounts %}
+        <div class="quick-login">
+          <p class="section-title">Or step in as</p>
+          <p class="field-help">Demo password <strong>{{ demo_password }}</strong></p>
+          <div class="quick-login-list">
+            {% for account in quick_accounts %}
+            <form method="post">
+              {% csrf_token %}
+              {% if request.GET.next %}<input type="hidden" name="next" value="{{ request.GET.next }}">{% endif %}
+              <input type="hidden" name="username" value="{{ account.username }}">
+              <input type="hidden" name="password" value="{{ demo_password }}">
+              <button type="submit" class="quick-account">
+                <span>
+                  <strong>{{ account.display_name }}</strong>
+                  <small>{{ account.role_label }}</small>
+                </span>
+                <span class="quick-cred">{{ account.username }}</span>
+              </button>
+            </form>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+      </section>
+    </main>
+  </div>
+</body>
+</html>

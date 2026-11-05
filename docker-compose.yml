@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ir_mqms
+      POSTGRES_USER: ir_mqms
+      POSTGRES_PASSWORD: ir_mqms
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  web:
+    build: .
+    depends_on:
+      - db
+    environment:
+      DEBUG: "false"
+      SECRET_KEY: replace-this-with-a-long-random-string
+      DB_ENGINE: postgres
+      DB_NAME: ir_mqms
+      DB_USER: ir_mqms
+      DB_PASSWORD: ir_mqms
+      DB_HOST: db
+      DB_PORT: "5432"
+      ALLOWED_HOSTS: localhost,127.0.0.1
+      TIME_ZONE: Asia/Kolkata
+    ports:
+      - "8000:8000"
+    volumes:
+      - media:/app/media
+
+volumes:
+  pgdata:
+  media:

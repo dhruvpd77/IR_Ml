@@ -1,0 +1,40 @@
+{% load static mqms %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{% block title %}MQMS{% endblock %} · Ingersoll Rand</title>
+  <link rel="icon" href="{% static 'favicon.svg' %}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Gujarati:wght@400;700&family=Source+Sans+3:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: { colors: { navy: "#0B1D36", ir: "#E10600" } } } };
+  </script>
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body>
+  <div id="shell" class="shell">
+    {% include "includes/sidebar.html" %}
+    <button class="sidebar-backdrop" type="button" aria-label="Close menu"></button>
+    <div class="main">
+      {% include "includes/topbar.html" %}
+      <main id="workspace" class="page">
+        {% if messages %}
+          <div class="messages">
+            {% for message in messages %}
+              <div class="message message-{{ message.tags }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </div>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="{% static 'js/app.js' %}"></script>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

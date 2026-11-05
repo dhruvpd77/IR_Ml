@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Job card templates{% endblock %}
+{% block content %}
+<div class="page-head"><div><p class="eyebrow">Configuration</p><h1>Digital job cards</h1><p class="muted">Starter cards are active now. Import each department Excel file here when it is ready. A new version is created if answers already exist, so history is kept.</p></div><a class="btn-primary" href="{% url 'jobcards:template_create' %}">New template</a></div>
+<div class="table-wrap"><table class="data-table"><thead><tr><th>Phase</th><th>Name</th><th>Version</th><th>Active</th><th></th></tr></thead><tbody>
+{% for template in templates %}<tr><td>{{ template.phase_code }}</td><td>{{ template.name }}</td><td>{{ template.version }}</td><td>{{ template.is_active|yesno:"Yes,No" }}</td><td><a href="{% url 'jobcards:template_edit' template.pk %}">Open</a></td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

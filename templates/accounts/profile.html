@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Profile{% endblock %}
+{% block content %}
+<section class="card" style="max-width:640px">
+  <p class="eyebrow">Account</p>
+  <h1>{{ request.user.display_name }}</h1>
+  <dl class="meta-list">
+    <div><dt>Username</dt><dd>{{ request.user.username }}</dd></div>
+    <div><dt>Role</dt><dd>{{ request.user.role_label }}</dd></div>
+    <div><dt>Department</dt><dd>{{ request.user.department.name|default:"—" }}</dd></div>
+    <div><dt>Employee ID</dt><dd>{{ request.user.employee_id|default:"—" }}</dd></div>
+    <div><dt>Email</dt><dd>{{ request.user.email|default:"—" }}</dd></div>
+    <div><dt>Last login</dt><dd>{{ request.user.last_login|date:"d M Y, H:i"|default:"—" }}</dd></div>
+  </dl>
+  <a class="btn-primary" href="{% url 'accounts:password' %}">Change password</a>
+</section>
+{% endblock %}

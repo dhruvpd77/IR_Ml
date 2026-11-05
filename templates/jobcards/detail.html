@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% load mqms %}
+{% block title %}Job card {{ submission.pk }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">{{ submission.machine.machine_id }} · {{ submission.phase_code }}</p>
+    <h1>Revision {{ submission.revision }} · cycle {{ submission.cycle }}</h1>
+    <p class="muted">{{ submission.operator.display_name|default:"—" }} · {{ submission.submitted_at|date:"d M Y, H:i"|default:"Draft" }}</p>
+  </div>
+  <div class="btn-row no-print">
+    <button class="btn-ghost" type="button" onclick="window.print()">Print</button>
+    {% if request.user.is_management and submission.status == "SUBMITTED" %}<a class="btn-primary" href="{% url 'jobcards:revise' submission.pk %}">Correct with a new revision</a>{% endif %}
+  </div>
+</div>
+<section class="card">
+  <span class="{{ submission.status|badge_class }}">{{ submission.get_status_display }}</span>
+  {% if submission.correction_reason %}<p>Correction reason: {{ submission.correction_reason }}</p>{% endif %}
+  <table class="data-table">
+    <tbody>
+      {% for response in responses %}
+        <tr><th>{{ response.field.label }}</th><td>{{ response.display_value }}</td></tr>
+      {% endfor %}
+      {% if submission.remarks %}<tr><th>Remarks</th><td>{{ submission.remarks }}</td></tr>{% endif %}
+      {% if submission.corrective_action %}<tr><th>Corrective action</th><td>{{ submission.corrective_action }}</td></tr>{% endif %}
+    </tbody>
+  </table>
+  {% for file in submission.attachments.all %}
+    {% if file.kind == "video" %}
+      <video class="clip" controls playsinline src="{% url 'jobcards:attachment' file.pk %}"></video>
+    {% else %}
+      <p><a href="{% url 'jobcards:attachment' file.pk %}">{{ file.original_name }}</a></p>
+    {% endif %}
+  {% endfor %}
+</section>
+{% endblock %}

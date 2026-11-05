@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{% if mode == "edit" %}Edit {{ machine.machine_id }}{% else %}Register machine{% endif %}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Planning data entry</p>
+    <h1>{% if mode == "edit" %}Edit planning data{% else %}Register a machine{% endif %}</h1>
+    <p class="muted">Choose the company and type, then the model. The CCN fills in by itself. Type the work order, and check the requirements.</p>
+  </div>
+</div>
+{% if not catalog_ready %}
+  <p class="message message-warning">The model list is empty. A Super Admin, Admin, or Production Leader needs to upload the planning Excel before a model can be selected.</p>
+{% endif %}
+<form method="post" class="card planning-form" data-catalog-url="{% url 'machines:catalog_lookup' %}">
+  {% csrf_token %}
+  <section class="form-section">
+    <p class="eyebrow">Identity</p>
+    <h2>Machine details</h2>
+    <div class="form-grid">
+      <div>{% include "includes/field.html" with field=form.company %}</div>
+      <div>{% include "includes/field.html" with field=form.machine_type %}</div>
+      <div class="wide">{% include "includes/field.html" with field=form.model_description %}</div>
+      <div class="auto-field">{% include "includes/field.html" with field=form.ccn %}</div>
+      <div>{% include "includes/field.html" with field=form.work_order %}</div>
+    </div>
+  </section>
+  <section class="form-section">
+    <p class="eyebrow">Requirements</p>
+    <h2>Checks and priority</h2>
+    <div class="form-grid">
+      <div>{% include "includes/field.html" with field=form.calibration %}</div>
+      <div>{% include "includes/field.html" with field=form.test_report_bar %}</div>
+      <div>{% include "includes/field.html" with field=form.export_packing_required %}</div>
+      <div>{% include "includes/field.html" with field=form.customer_inspection %}</div>
+      <div data-inspection-date>{% include "includes/field.html" with field=form.customer_inspection_date %}</div>
+      <div>{% include "includes/field.html" with field=form.priority %}</div>
+    </div>
+  </section>
+  {{ form.non_field_errors }}
+  <div class="btn-row">
+    <button class="btn-ghost" name="action" value="save" type="submit">Save draft</button>
+    {% if mode != "edit" %}<button class="btn-primary" name="action" value="submit" type="submit">Save and submit to production</button>{% endif %}
+  </div>
+</form>
+{% endblock %}

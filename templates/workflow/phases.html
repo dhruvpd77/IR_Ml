@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Phases{% endblock %}
+{% block content %}
+<div class="page-head"><div><p class="eyebrow">Workflow</p><h1>Production phases</h1><p class="muted">Names can be changed. Sequence and the Assembly / Electrical parallel rule stay fixed so a machine cannot skip a stage.</p></div></div>
+<div class="table-wrap"><table class="data-table"><thead><tr><th>Order</th><th>Phase</th><th>Department</th><th>Parallel group</th><th></th></tr></thead><tbody>
+{% for phase in phases %}<tr><td>{{ phase.sequence }}</td><td>{{ phase.name }}</td><td>{{ phase.department.name|default:"—" }}</td><td>{{ phase.parallel_group|default:"—" }}</td><td><a href="{% url 'workflow:phase_edit' phase.pk %}">Rename</a></td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

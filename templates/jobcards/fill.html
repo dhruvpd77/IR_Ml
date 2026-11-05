@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% load mqms %}
+{% block title %}{{ phase.name }} job card{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="crumbs"><a href="{% url 'machines:detail' machine.machine_id %}">{{ machine.machine_id }}</a> / {{ phase.name }}</p>
+    <p class="eyebrow">{{ template.name }} · v{{ template.version }}</p>
+    <h1>{{ phase.name }} job card</h1>
+  </div>
+</div>
+<div class="summary-grid">
+  <div class="stack">
+    {% include "includes/machine_summary.html" %}
+    <section class="card">
+      <h3>Journey</h3>
+      {% for group in steps %}
+        {% for item in group.phases %}
+          <p>{{ item.name }} · <span class="{{ item.status|badge_class }}">{{ item.status_label }}</span></p>
+        {% endfor %}
+      {% endfor %}
+    </section>
+  </div>
+  <form method="post" enctype="multipart/form-data" class="card" {% if is_qc and editable %}data-confirm="Record this QC decision?"{% endif %}>
+    {% csrf_token %}
+    {% if not editable %}
+      <div class="message message-warning">This phase is not open for your submission. Previous records stay available below.</div>
+    {% endif %}
+    {% if rework_open %}
+      <div class="message message-error">This machine was returned for rework. Describe the corrective action before submitting.{% if open_rework %} {{ open_rework.reason }}{% endif %}</div>
+      <label class="field"><span class="field-label">Corrective action</span><textarea class="field-input" name="corrective_action" rows="3" {% if not editable %}disabled{% endif %}></textarea></label>
+    {% endif %}
+    {% for group in groups %}
+      <h3 class="section-title">{{ group.name }}</h3>
+      {% for field in group.fields %}
+        {% with current=values|getitem:field.field_key %}
+          <div class="field" style="margin-bottom:12px">
+            <span class="field-label">{{ field.label }}{% if field.required %} *{% endif %}</span>
+            {% if field.help_text %}<p class="field-help">{{ field.help_text }}</p>{% endif %}
+            {% if field.field_type == "long_text" or field.field_type == "remarks" %}
+              <textarea class="field-input" name="f_{{ field.field_key }}" rows="3" {% if not editable %}disabled{% endif %}>{{ current }}</textarea>
+            {% elif field.field_type == "pass_fail" %}
+              <div class="choice-row">
+                <label><input type="radio" name="f_{{ field.field_key }}" value="Pass" {% if current == "Pass" %}checked{% endif %} {% if not editable %}disabled{% endif %}> Pass</label>
+                <label><input type="radio" name="f_{{ field.field_key }}" value="Fail" {% if current == "Fail" %}checked{% endif %} {% if not editable %}disabled{% endif %}> Fail</label>
+                <label><input type="radio" name="f_{{ field.field_key }}" value="N/A" {% if current == "N/A" %}checked{% endif %} {% if not editable %}disabled{% endif %}> N/A</label>
+              </div>
+            {% elif field.field_type == "yes_no" %}
+              <div class="choice-row">
+                <label><input type="radio" name="f_{{ field.field_key }}" value="Yes" {% if current == "Yes" %}checked{% endif %} {% if not editable %}disabled{% endif %}> Yes</label>
+                <label><input type="radio" name="f_{{ field.field_key }}" value="No" {% if current == "No" %}checked{% endif %} {% if not editable %}disabled{% endif %}> No</label>
+              </div>
+            {% elif field.field_type == "dropdown" %}
+              <select class="field-input" name="f_{{ field.field_key }}" {% if not editable %}disabled{% endif %}>
+                <option value="">Select</option>
+                {% for option in field.options %}<option value="{{ option }}" {% if current == option %}selected{% endif %}>{{ option }}</option>{% endfor %}
+              </select>
+            {% elif field.field_type == "radio" %}
+              <div class="choice-row">{% for option in field.options %}<label><input type="radio" name="f_{{ field.field_key }}" value="{{ option }}" {% if current == option %}checked{% endif %} {% if not editable %}disabled{% endif %}> {{ option }}</label>{% endfor %}</div>
+            {% elif field.field_type == "checkbox" and field.options %}
+              <div class="choice-row">{% for option in field.options %}<label><input type="checkbox" name="f_{{ field.field_key }}" value="{{ option }}" {% if option in current %}checked{% endif %} {% if not editable %}disabled{% endif %}> {{ option }}</label>{% endfor %}</div>
+            {% elif field.field_type == "checkbox" %}
+              <label><input class="checkbox-input" type="checkbox" name="f_{{ field.field_key }}" {% if current %}checked{% endif %} {% if not editable %}disabled{% endif %}> Confirmed</label>
+            {% elif field.field_type == "signature" %}
+              <input class="field-input" name="f_{{ field.field_key }}" value="{{ current.name }}" placeholder="Type your full name" {% if not editable %}disabled{% endif %}>
+              <label><input class="checkbox-input" type="checkbox" name="sig_{{ field.field_key }}" {% if current.confirmed %}checked{% endif %} {% if not editable %}disabled{% endif %}> I confirm these entries are accurate</label>
+            {% elif field.field_type == "date" %}
+              <input class="field-input" type="date" name="f_{{ field.field_key }}" value="{{ current }}" {% if not editable %}disabled{% endif %}>
+            {% elif field.field_type == "time" %}
+              <input class="field-input" type="time" name="f_{{ field.field_key }}" value="{{ current }}" {% if not editable %}disabled{% endif %}>
+            {% elif field.field_type == "integer" or field.field_type == "decimal" or field.field_type == "measurement" %}
+              <div class="btn-row"><input class="field-input" type="number" step="any" name="f_{{ field.field_key }}" value="{{ current }}" {% if not editable %}disabled{% endif %}>{% if field.unit %}<span class="muted">{{ field.unit }}</span>{% endif %}</div>
+            {% elif field.field_type == "video" %}
+              {% with existing=existing_files|getitem:field.field_key %}
+                {% if existing %}<video class="clip" controls playsinline src="{% url 'jobcards:attachment' existing.pk %}"></video>{% endif %}
+              {% endwith %}
+              {% if editable %}
+                <div class="video-box" data-video-box>
+                  <video class="clip" data-video-preview controls playsinline hidden></video>
+                  <p class="muted" data-video-status>Record a short clip, or choose one from the gallery. Only the first 30 seconds are kept, and the file is reduced when you save.</p>
+                  <div class="btn-row">
+                    <label class="btn-primary video-pick" data-video-camera-label>Record from camera<input type="file" accept="video/*" capture="environment" data-video-camera></label>
+                    <button class="btn-primary" type="button" data-video-record hidden>Record from camera</button>
+                    <button class="btn-danger" type="button" data-video-stop hidden>Stop</button>
+                    <label class="btn-ghost video-pick">Choose from gallery<input type="file" accept="video/*" data-video-gallery></label>
+                  </div>
+                  <input class="sr-only" type="file" name="file_{{ field.field_key }}" accept="video/*" data-video-result>
+                </div>
+              {% endif %}
+            {% elif field.field_type == "image" or field.field_type == "file" %}
+              {% with existing=existing_files|getitem:field.field_key %}
+                {% if existing %}<p><a href="{% url 'jobcards:attachment' existing.pk %}">Current file: {{ existing.original_name }}</a></p>{% endif %}
+              {% endwith %}
+              {% if editable %}<input class="file-input" type="file" name="file_{{ field.field_key }}">{% endif %}
+            {% else %}
+              <input class="field-input" name="f_{{ field.field_key }}" value="{{ current }}" {% if not editable %}disabled{% endif %}>
+            {% endif %}
+            {% with error=field_errors|getitem:field.field_key %}{% if error %}<p class="field-error">{{ error }}</p>{% endif %}{% endwith %}
+          </div>
+        {% endwith %}
+      {% endfor %}
+    {% endfor %}
+    <label class="field"><span class="field-label">Submission remarks</span><textarea class="field-input" name="remarks" rows="3" {% if not editable %}disabled{% endif %}></textarea></label>
+    {% if editable and is_qc %}
+      <h3 class="section-title">QC decision</h3>
+      <label class="field"><span class="field-label">Send back to</span>
+        <select class="field-input" name="target_phase"><option value="">Select a phase for rejection</option>{% for target in targets %}<option value="{{ target.code }}">{{ target.name }}</option>{% endfor %}</select>
+      </label>
+      <label class="field"><span class="field-label">Rejection reason</span><textarea class="field-input" name="reason" rows="3"></textarea></label>
+      <label class="field"><span class="field-label">Evidence photographs</span><input class="file-input" type="file" name="evidence" accept="image/*" multiple></label>
+      <div class="btn-row">
+        <button class="btn-ghost" name="action" value="draft" type="submit">Save draft</button>
+        <button class="btn-danger" name="action" value="reject" type="submit">Reject and rework</button>
+        <button class="btn-primary" name="action" value="approve" type="submit">Approved and go to next phase</button>
+      </div>
+    {% elif editable %}
+      <div class="btn-row">
+        <button class="btn-ghost" name="action" value="draft" type="submit">Save draft</button>
+        <button class="btn-primary" name="action" value="submit" type="submit">Approved and go to next phase</button>
+      </div>
+    {% endif %}
+  </form>
+</div>
+<section class="card" style="margin-top:16px">
+  <h3>Previous departmental records</h3>
+  {% for submission in history %}
+    <p><a href="{% url 'jobcards:submission' submission.pk %}">{{ submission.phase_code }} · cycle {{ submission.cycle }} · revision {{ submission.revision }}</a> <span class="{{ submission.status|badge_class }}">{{ submission.get_status_display }}</span></p>
+  {% empty %}<p class="muted">No earlier job cards.</p>{% endfor %}
+</section>
+{% endblock %}

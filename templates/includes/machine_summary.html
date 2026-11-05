@@ -1,0 +1,20 @@
+{% load mqms %}
+<section class="card">
+  <p class="eyebrow">{{ machine.machine_id }}</p>
+  <h2>{{ machine.planning.model_description }}</h2>
+  <p class="muted">{{ machine.planning.company }}</p>
+  <dl class="meta-list">
+    <div><dt>Work order</dt><dd>{{ machine.planning.work_order }}</dd></div>
+    <div><dt>CCN</dt><dd>{{ machine.planning.ccn|default:"—" }}</dd></div>
+    <div><dt>Type</dt><dd>{{ machine.planning.machine_type|default:"—" }}</dd></div>
+    <div><dt>Calibration</dt><dd>{{ machine.planning.calibration|default:"—" }}</dd></div>
+    <div><dt>Test report bar</dt><dd>{{ machine.planning.test_report_bar|default:"—" }}</dd></div>
+    <div><dt>Export packing</dt><dd>{{ machine.planning.export_packing_required|default:"—" }}</dd></div>
+    <div><dt>Customer inspection</dt><dd>{{ machine.planning.customer_inspection|default:"—" }}{% if machine.planning.customer_inspection_date %} · {{ machine.planning.customer_inspection_date|date:"d M Y" }}{% endif %}</dd></div>
+    <div><dt>Priority</dt><dd><span class="{{ machine.priority|badge_class }}">{{ machine.priority_label }}</span></dd></div>
+    <div><dt>Serial</dt><dd>{{ machine.planner_serial|default:"—" }}</dd></div>
+    <div><dt>Production serial</dt><dd>{{ machine.production_serial|default:"—" }}</dd></div>
+    <div><dt>Location</dt><dd>{% if machine.station %}{% if machine.station.line_label %}{{ machine.station.line_label }} · {% endif %}{{ machine.station.name }}{% else %}—{% endif %}</dd></div>
+    <div><dt>Status</dt><dd><span class="{{ machine.status|badge_class }}">{{ machine.status_label }}</span></dd></div>
+  </dl>
+</section>

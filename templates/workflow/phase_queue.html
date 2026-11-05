@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% load mqms %}
+{% block title %}{{ phase.name }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><p class="eyebrow">Department queue</p><h1>{{ phase.name }}</h1></div></div>
+<nav class="tabs">
+  <a class="{% if tab == 'open' %}active{% endif %}" href="?tab=open">Open</a>
+  <a class="{% if tab == 'rework' %}active{% endif %}" href="?tab=rework">Rework</a>
+  <a class="{% if tab == 'done' %}active{% endif %}" href="?tab=done">Submitted</a>
+</nav>
+<form method="get" class="filters"><input type="hidden" name="tab" value="{{ tab }}"><input class="field-input" name="q" value="{{ query }}" placeholder="Search"><button class="btn-ghost">Search</button></form>
+<div class="table-wrap"><table class="data-table">
+  <thead><tr><th>View</th><th>Machine</th><th>Work order</th><th>Model</th><th>Serial</th><th>Priority</th><th></th></tr></thead>
+  <tbody>
+    {% for machine in page %}
+      <tr>
+        <td><a class="btn-ghost btn-view" href="{% url 'machines:detail' machine.machine_id %}">View</a></td>
+        <td><a class="machine-link" href="{% url 'machines:detail' machine.machine_id %}">{{ machine.machine_id }}</a></td>
+        <td>{{ machine.planning.work_order }}</td>
+        <td>{{ machine.planning.model_description }}</td>
+        <td>{{ machine.planner_serial|default:"—" }}</td>
+        <td><span class="{{ machine.priority|badge_class }}">{{ machine.priority_label }}</span></td>
+        <td class="btn-row">{% if tab != 'done' and can_act %}<a class="btn-ghost" href="{% url 'jobcards:fill' phase.code machine.machine_id %}">Job card</a><form method="post" action="{% url 'machines:pass_phase' machine.machine_id phase.code %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="btn-primary" type="submit">Approved and go to next phase</button></form>{% endif %}</td>
+      </tr>
+    {% empty %}<tr><td colspan="7" class="empty">No machines in this view.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{% include "includes/pagination.html" %}
+{% endblock %}

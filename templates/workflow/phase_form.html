@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Rename phase{% endblock %}
+{% block content %}
+<form method="post" class="card stack" style="max-width:640px">{% csrf_token %}
+  <h1>{{ phase.code }}</h1>
+  <label class="field"><span class="field-label">Display name</span><input class="field-input" name="name" value="{{ phase.name }}" required></label>
+  <label class="field"><span class="field-label">Description</span><textarea class="field-input" name="description" rows="4">{{ phase.description }}</textarea></label>
+  <button class="btn-primary" type="submit">Save phase</button>
+</form>
+{% endblock %}

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% load mqms %}
+{% block title %}Track{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Admin</p>
+    <h1>Track</h1>
+    <p class="muted">Every machine, and the phase it is in now. The red stop is the current phase.</p>
+  </div>
+</div>
+<form class="filters" method="get">
+  <input class="field-input" type="search" name="q" value="{{ filters.q }}" placeholder="Machine, work order, CCN, model, or serial">
+  <select class="field-input" name="status"><option value="">All statuses</option>{% for value, label in statuses %}<option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  <select class="field-input" name="phase"><option value="">All phases</option>{% for value, label in phases %}<option value="{{ value }}" {% if filters.phase == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  <select class="field-input" name="priority"><option value="">All priorities</option>{% for value, label in priorities %}<option value="{{ value }}" {% if filters.priority == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  {% include "includes/station_select.html" with name="station" empty="All stations" selected=filters.station %}
+  <button class="btn-primary" type="submit">Search</button>
+</form>
+<p class="muted">{{ page.paginator.count }} machine{{ page.paginator.count|pluralize }}</p>
+{% for machine in page %}
+  <article class="card track-machine">
+    <div class="track-head">
+      <div>
+        <p class="eyebrow">{{ machine.pipeline }}</p>
+        <h2><a class="machine-link" href="{% url 'machines:detail' machine.machine_id %}">{{ machine.machine_id }}</a></h2>
+        <p>{{ machine.planning.model_description }}</p>
+      </div>
+      <div class="btn-row">
+        <span class="{{ machine.status|badge_class }}">{{ machine.status_label }}</span>
+        <a class="btn-ghost" href="{% url 'machines:detail' machine.machine_id %}">Open record</a>
+        <a class="btn-ghost" href="{% url 'reports:machine_pdf' machine.machine_id %}">PDF</a>
+      </div>
+    </div>
+    <dl class="track-meta">
+      <div><dt>Company</dt><dd>{{ machine.planning.company|default:"—" }}</dd></div>
+      <div><dt>Work order</dt><dd>{{ machine.planning.work_order|default:"—" }}</dd></div>
+      <div><dt>CCN</dt><dd>{{ machine.planning.ccn|default:"—" }}</dd></div>
+      <div><dt>Serial</dt><dd>{{ machine.planner_serial|default:"—" }}</dd></div>
+      <div><dt>Station</dt><dd>{% if machine.station %}{{ machine.station.name }}{% else %}—{% endif %}</dd></div>
+      <div><dt>Priority</dt><dd>{{ machine.priority_label }}</dd></div>
+    </dl>
+    {% include "includes/track.html" with steps=machine.track_steps %}
+    {% if machine.track_actions %}
+      <div class="btn-row">
+        {% for action in machine.track_actions %}<a class="btn-primary" href="{{ action.href }}">{{ action.label }}</a>{% endfor %}
+      </div>
+    {% endif %}
+  </article>
+{% empty %}
+  <section class="card"><p class="empty">No machines match this search.</p></section>
+{% endfor %}
+{% include "includes/pagination.html" %}
+{% endblock %}

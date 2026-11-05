@@ -1,0 +1,10 @@
+<select class="field-input" name="{{ name|default:'station' }}" {% if required %}required{% endif %}>
+  <option value="">{{ empty|default:"Choose a line and station" }}</option>
+  {% for group in station_groups %}
+    <optgroup label="{{ group.label }}">
+      {% for station in group.stations %}
+        <option value="{{ station.pk }}" {% if selected == station.pk|stringformat:"s" %}selected{% endif %}>{{ station.name }}{% if station.kind_label %} · {{ station.kind_label }}{% endif %}</option>
+      {% endfor %}
+    </optgroup>
+  {% endfor %}
+</select>

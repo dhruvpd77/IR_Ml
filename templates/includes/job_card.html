@@ -1,0 +1,135 @@
+<article class="print-card">
+  <header class="print-head">
+    <div class="print-brand">
+      {% if brand_logo %}<img src="{{ brand_logo }}" alt="Company logo">{% elif logo %}<img src="{{ logo.image.url }}" alt="Company logo">{% else %}<span class="print-mark">IR</span>{% endif %}
+    </div>
+    <p class="print-address">Ingersoll Rand (I) Ltd.<br>21-30 GIDC Industrial Estate,<br>Naroda, Ahmedabad- 382330<br>Gujarat, India</p>
+    <div class="print-title">
+      <strong>OIL FREE IRN-SEEIRA-DX</strong>
+      <span class="print-badge">ULTRA COOLANT OIL</span>
+      <small>{{ card.machine_id }}</small>
+    </div>
+  </header>
+  <div class="print-identity">
+    {% for row in card.identity %}
+      <div><span>{{ row.label }}</span><b>{{ row.value }}</b></div>
+    {% endfor %}
+  </div>
+  {% if card.chips %}
+    <div class="print-chips">
+      {% for chip in card.chips %}
+        <span class="print-chip chip-{{ chip.tone }}">{{ chip.name }}<small>{{ chip.status }}</small></span>
+      {% endfor %}
+    </div>
+  {% endif %}
+  <div class="print-body">
+    {% if card.production %}
+    <header class="print-banner" style="background:#0B1D36">
+      <strong>Planning and production</strong>
+      <span>Entered by {{ card.entered_by }}</span>
+    </header>
+    <div class="print-pairs">
+      {% for row in card.production %}
+        <div class="pair {% if row.span %}span{% endif %} {% if row.long %}long{% endif %}">
+          {% for cell in row.cells %}
+            <span>{{ cell.label }}</span><b>{{ cell.value }}</b>
+          {% endfor %}
+        </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% for phase in card.phases %}
+      <header class="print-banner" style="background:{{ phase.color }}">
+        <strong>{{ phase.title }}</strong>
+        <span>{{ phase.stamp }}</span>
+      </header>
+      {% for section in phase.sections %}
+        <header class="print-banner sub" style="background:{{ phase.color }}">{{ section.name }}</header>
+        {% if section.layout == "electrical" %}
+          <div class="elec-sheet">
+            <div class="elec-head"><span>ચેક વિગત</span><span>મૂલ્ય / નોંધ</span><span>Result</span><span>Remark</span></div>
+            {% for row in section.rows %}
+              <div class="elec-sheet-row">
+                <p>{{ row.result.label }}</p>
+                <b>{{ row.value.value }}</b>
+                <b class="tone-{{ row.result.tone }}">{{ row.result.value }}</b>
+                <b>{{ row.remark.value }}</b>
+              </div>
+            {% endfor %}
+          </div>
+        {% elif section.layout == "grid" %}
+          <div class="print-pairs">
+            {% for row in section.rows %}
+              <div class="pair {% if row.span %}span{% endif %} {% if row.long %}long{% endif %}">
+                {% for cell in row.cells %}
+                  <span>{{ cell.label }}</span><b class="tone-{{ cell.tone }}">{{ cell.value }}</b>
+                {% endfor %}
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          {% for item in section.items %}
+            {% if item.media_url %}
+              <div class="print-block"><span>{{ item.label }}</span><video class="clip" controls playsinline src="{{ item.media_url }}"></video></div>
+            {% elif item.kind == "long_text" or item.kind == "remarks" %}
+              <div class="print-block"><span>{{ item.label }}</span><p>{{ item.value }}</p></div>
+            {% else %}
+              <div class="print-line {% if item.gujarati %}gujarati{% endif %}">
+                <p>{{ item.label }}</p>
+                <b class="tone-{{ item.tone }}">{{ item.value }}</b>
+              </div>
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+      {% endfor %}
+      {% for old in phase.earlier %}
+        <header class="print-banner sub" style="background:#334155">{{ phase.title }} · earlier record<span>{{ old.stamp }}</span></header>
+        {% for section in old.sections %}
+          <header class="print-banner sub" style="background:#334155">{{ section.name }}</header>
+          {% if section.layout == "electrical" %}
+            <div class="elec-sheet">
+              <div class="elec-head"><span>ચેક વિગત</span><span>મૂલ્ય / નોંધ</span><span>Result</span><span>Remark</span></div>
+              {% for row in section.rows %}
+                <div class="elec-sheet-row">
+                  <p>{{ row.result.label }}</p>
+                  <b>{{ row.value.value }}</b>
+                  <b class="tone-{{ row.result.tone }}">{{ row.result.value }}</b>
+                  <b>{{ row.remark.value }}</b>
+                </div>
+              {% endfor %}
+            </div>
+          {% elif section.layout == "grid" %}
+            <div class="print-pairs">
+              {% for row in section.rows %}
+                <div class="pair {% if row.span %}span{% endif %} {% if row.long %}long{% endif %}">
+                  {% for cell in row.cells %}
+                    <span>{{ cell.label }}</span><b class="tone-{{ cell.tone }}">{{ cell.value }}</b>
+                  {% endfor %}
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            {% for item in section.items %}
+              {% if item.media_url %}
+                <div class="print-block"><span>{{ item.label }}</span><video class="clip" controls playsinline src="{{ item.media_url }}"></video></div>
+              {% elif item.kind == "long_text" or item.kind == "remarks" %}
+                <div class="print-block"><span>{{ item.label }}</span><p>{{ item.value }}</p></div>
+              {% else %}
+                <div class="print-line {% if item.gujarati %}gujarati{% endif %}">
+                  <p>{{ item.label }}</p>
+                  <b class="tone-{{ item.tone }}">{{ item.value }}</b>
+                </div>
+              {% endif %}
+            {% endfor %}
+          {% endif %}
+        {% endfor %}
+      {% endfor %}
+    {% endfor %}
+    {% if card.reworks %}
+      <header class="print-banner" style="background:#B45309"><strong>Rework</strong><span>{{ card.reworks|length }} record(s)</span></header>
+      {% for item in card.reworks %}
+        <div class="print-block"><span>{{ item.label }}</span><p>{{ item.value }}</p></div>
+      {% endfor %}
+    {% endif %}
+  </div>
+</article>

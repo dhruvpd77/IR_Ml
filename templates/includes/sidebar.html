@@ -1,0 +1,18 @@
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-mark">IR</div>
+    <div>
+      <small>Ingersoll Rand</small>
+      <strong>Production MQMS</strong>
+    </div>
+  </div>
+  <nav class="nav-scroll">
+    {% for item in nav_items %}
+      <a class="nav-link{% if item.active %} active{% endif %}" href="{{ item.href }}">
+        <i data-lucide="{{ item.icon }}"></i>
+        <span>{{ item.label }}</span>
+      </a>
+    {% endfor %}
+  </nav>
+  <div class="sidebar-foot">One machine · one record · full traceability</div>
+</aside>

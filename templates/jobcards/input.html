@@ -1,0 +1,24 @@
+{% load mqms %}
+{% with current=values|getitem:field.field_key %}
+  {% if field.field_type == "yes_no" %}
+    <div class="yn">
+      <label class="yn-btn yn-yes"><input type="radio" name="f_{{ field.field_key }}" value="Yes" {% if current == "Yes" %}checked{% endif %} {% if not editable %}disabled{% endif %}> હા</label>
+      <label class="yn-btn yn-no"><input type="radio" name="f_{{ field.field_key }}" value="No" {% if current == "No" %}checked{% endif %} {% if not editable %}disabled{% endif %}> ના</label>
+    </div>
+  {% elif field.field_type == "radio" %}
+    <div class="yn">
+      {% for option in field.options %}
+        <label class="yn-btn {% if option == 'OK' %}yn-yes{% else %}yn-no{% endif %}"><input type="radio" name="f_{{ field.field_key }}" value="{{ option }}" {% if field.field_key == "test_result" %}data-test-result="1"{% endif %} {% if current == option %}checked{% endif %} {% if not editable %}disabled{% endif %}> {{ option }}</label>
+      {% endfor %}
+    </div>
+  {% elif field.field_type == "long_text" or field.field_type == "remarks" %}
+    <textarea class="field-input" name="f_{{ field.field_key }}" rows="4" {% if not editable %}disabled{% endif %}>{{ current }}</textarea>
+  {% elif field.field_type == "date" %}
+    <input class="field-input" type="date" name="f_{{ field.field_key }}" value="{{ current }}" {% if not editable %}disabled{% endif %}>
+  {% elif field.field_type == "decimal" or field.field_type == "integer" or field.field_type == "measurement" %}
+    <div class="unit-row"><input class="field-input" type="number" step="any" name="f_{{ field.field_key }}" value="{{ current }}" {% if not editable %}disabled{% endif %}>{% if field.unit %}<span>{{ field.unit }}</span>{% endif %}</div>
+  {% else %}
+    <input class="field-input" name="f_{{ field.field_key }}" value="{{ current }}" {% if not editable %}disabled{% endif %}>
+  {% endif %}
+  {% with error=field_errors|getitem:field.field_key %}{% if error %}<p class="field-error">{{ error }}</p>{% endif %}{% endwith %}
+{% endwith %}

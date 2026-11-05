@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% load mqms %}
+{% block title %}{{ phase.name }} job card{% endblock %}
+{% block content %}
+<div class="page-head no-print">
+  <div>
+    <p class="crumbs"><a href="{% url 'machines:detail' machine.machine_id %}">{{ machine.machine_id }}</a> / {{ phase.name }}</p>
+    <h1>{{ phase.name }} job card</h1>
+  </div>
+  <a class="btn-ghost" href="{% url 'machines:detail' machine.machine_id %}">View record</a>
+</div>
+{% if not editable %}<p class="message message-warning">This phase is not open. The card is shown so the earlier details stay visible.</p>{% endif %}
+<form method="post" class="job-sheet card" {% if rework_open %}data-confirm="Submit the corrective action?"{% endif %}>
+  {% csrf_token %}
+  <header class="sheet-top">
+    <div class="sheet-brand">
+      {% if brand_logo %}<img class="brand-logo" src="{{ brand_logo }}" alt="{{ machine.planning.company }}">{% elif logo %}<img class="brand-logo" src="{{ logo.image.url }}" alt="Company logo">{% else %}<div class="brand-mark">IR</div>{% endif %}
+      <p>Ingersoll Rand (I) Ltd.<br>21-30 GIDC Industrial Estate,<br>Naroda, Ahmedabad- 382330<br>Gujarat, India</p>
+    </div>
+    <div class="sheet-title">
+      <strong>OIL FREE IRN-SEEIRA-DX</strong>
+      <span>ULTRA COOLANT OIL</span>
+    </div>
+  </header>
+  <dl class="sheet-identity">
+    <div><dt>Planning date</dt><dd>{{ planning_date|date:"d-M-Y" }}</dd></div>
+    <div class="wide"><dt>Model</dt><dd>{{ machine.planning.model_description }}</dd></div>
+    <div><dt>Machine serial number</dt><dd>{{ machine.planner_serial|default:"—" }}</dd></div>
+    <div><dt>Work order number</dt><dd>{{ machine.planning.work_order }}</dd></div>
+    <div><dt>CCN</dt><dd>{{ machine.planning.ccn|default:"—" }}</dd></div>
+  </dl>
+  {% if rework_open %}
+    <div class="message message-error">This machine was returned for rework.{% if open_rework %} {{ open_rework.reason }}{% endif %}</div>
+    <label class="field"><span class="field-label">Corrective action</span><textarea class="field-input" name="corrective_action" rows="3" {% if not editable %}disabled{% endif %}></textarea></label>
+  {% endif %}
+  {% for group in groups %}
+    <section class="sheet-section {% if group.name == 'If not OK' %}not-ok-section{% endif %}" {% if group.name == "If not OK" %}data-not-ok hidden{% endif %}>
+      <h2>{{ group.name }}</h2>
+      {% if group.name == "Assembly parts" or group.name == "General check" %}
+        <div class="sheet-grid">
+          {% for field in group.fields %}
+            <label class="field"><span class="field-label">{{ field.label }}</span>{% include "jobcards/input.html" %}</label>
+          {% endfor %}
+        </div>
+      {% elif group.rows %}
+        <div class="elec-table">
+          <div class="elec-head"><span>ચેક વિગત</span><span>મૂલ્ય / નોંધ</span><span>OK / NOT OK</span><span>Remark</span></div>
+          {% for row in group.rows %}
+            <div class="elec-row">
+              <p>{{ row.result.label }}</p>
+              <div>{% include "jobcards/input.html" with field=row.value %}</div>
+              <div>{% include "jobcards/input.html" with field=row.result %}</div>
+              <div>{% include "jobcards/input.html" with field=row.remark %}</div>
+            </div>
+          {% endfor %}
+        </div>
+      {% elif group.name == "Assembly sign off" or group.name == "Testing sign off" or group.name == "Electrical sign off" or group.name == "End of line" %}
+        <div class="sheet-grid">
+          {% for field in group.fields %}
+            <label class="field {% if field.field_type == 'long_text' %}wide{% endif %}"><span class="field-label">{{ field.label }}</span>{% include "jobcards/input.html" %}</label>
+          {% endfor %}
+        </div>
+      {% elif group.name == "Testing result" %}
+        {% for field in group.fields %}<div class="field"><span class="field-label">{{ field.label }}</span>{% include "jobcards/input.html" %}</div>{% endfor %}
+      {% else %}
+        <div class="check-list">
+          {% for field in group.fields %}
+            <div class="check-row {% if field.field_type != 'yes_no' %}check-extra{% endif %}">
+              <p>{{ field.label }}</p>
+              {% include "jobcards/input.html" %}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </section>
+  {% endfor %}
+  {% if editable %}
+    <div class="btn-row no-print">
+      <button class="btn-ghost" name="action" value="draft" type="submit">Save draft</button>
+      <button class="btn-primary" name="action" value="submit" type="submit">Approved and go to next phase</button>
+    </div>
+  {% endif %}
+</form>
+{% endblock %}

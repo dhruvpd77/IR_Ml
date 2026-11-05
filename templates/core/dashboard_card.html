@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}{{ card.label }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="crumbs"><a href="{% url 'core:dashboard' %}">Dashboard</a> / {{ card.label }}</p>
+    <h1>{{ card.label }}</h1>
+    <p class="muted">{{ count }} machine{{ count|pluralize }}. {{ note }}</p>
+  </div>
+</div>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th></th>
+        <th>Machine</th>
+        <th>Work order</th>
+        <th>Model</th>
+        <th>Serial</th>
+        <th>Station</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for machine in machines %}
+        <tr>
+          <td data-label=""><a class="btn-ghost btn-view" href="{% url 'machines:detail' machine.machine_id %}?stage={{ key }}">View</a></td>
+          <td data-label="Machine"><a class="machine-link" href="{% url 'machines:detail' machine.machine_id %}?stage={{ key }}">{{ machine.machine_id }}</a></td>
+          <td data-label="Work order">{{ machine.planning.work_order }}</td>
+          <td data-label="Model">{{ machine.planning.model_description }}</td>
+          <td data-label="Serial">{{ machine.planner_serial|default:"—" }}</td>
+          <td data-label="Station">{{ machine.station|default:"—" }}</td>
+          <td data-label="Status"><span class="badge badge-slate">{{ machine.status_label }}</span></td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7" class="empty">No machines in this group.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

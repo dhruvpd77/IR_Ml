@@ -1,0 +1,13 @@
+{% if page.paginator.num_pages > 1 %}
+  <nav class="pager">
+    <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+    <div class="btn-row">
+      {% if page.has_previous %}
+        <a class="btn-ghost" href="?{{ querystring }}{% if querystring %}&{% endif %}page={{ page.previous_page_number }}">Previous</a>
+      {% endif %}
+      {% if page.has_next %}
+        <a class="btn-ghost" href="?{{ querystring }}{% if querystring %}&{% endif %}page={{ page.next_page_number }}">Next</a>
+      {% endif %}
+    </div>
+  </nav>
+{% endif %}

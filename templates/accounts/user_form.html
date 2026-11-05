@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}{% if edited_user %}Edit user{% else %}New user{% endif %}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{% if edited_user %}Edit {{ edited_user.username }}{% else %}New user{% endif %}</h1><p class="muted">Assign the role for the phase this person works in. You can add several users to the same phase.</p></div></div>
+<form method="post" class="card form-grid">{% csrf_token %}{% for field in form %}<div>{% include "includes/field.html" %}</div>{% endfor %}{% if form.non_field_errors %}<div class="wide message message-error">{{ form.non_field_errors }}</div>{% endif %}<div class="wide"><button class="btn-primary" type="submit">Save user</button></div></form>
+{% endblock %}

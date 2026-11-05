@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Job card template{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{% if template %}{{ template.name }}{% else %}New job card template{% endif %}</h1></div></div>
+<form method="post" class="card form-grid">{% csrf_token %}{% for field in form %}<div>{% include "includes/field.html" %}</div>{% endfor %}<div class="wide"><button class="btn-primary" name="save-template" value="1" type="submit">Save template</button></div></form>
+{% if template %}
+  <section class="card" style="margin-top:16px">
+    <div class="page-head"><h3>Fields</h3><a class="btn-ghost" href="{% url 'jobcards:field_create' template.pk %}">Add field</a></div>
+    <table class="data-table"><thead><tr><th>Order</th><th>Label</th><th>Type</th><th>Required</th><th>Active</th><th></th></tr></thead><tbody>
+      {% for field in fields %}
+        <tr>
+          <td>{{ field.sort_order }}</td><td>{{ field.label }}</td><td>{{ field.get_field_type_display }}</td><td>{{ field.required|yesno:"Yes,No" }}</td><td>{{ field.is_active|yesno:"Yes,No" }}</td>
+          <td class="btn-row">
+            <a href="{% url 'jobcards:field_edit' template.pk field.pk %}">Edit</a>
+            <form method="post" action="{% url 'jobcards:field_move' field.pk %}">{% csrf_token %}<button name="direction" value="up">Up</button></form>
+            <form method="post" action="{% url 'jobcards:field_move' field.pk %}">{% csrf_token %}<button name="direction" value="down">Down</button></form>
+            <form method="post" action="{% url 'jobcards:field_toggle' field.pk %}">{% csrf_token %}<button>Toggle</button></form>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody></table>
+    <form method="post" action="{% url 'jobcards:template_version' template.pk %}" style="margin-top:12px">{% csrf_token %}<button class="btn-ghost" type="submit">Create new version</button></form>
+    <form method="post" action="{% url 'jobcards:template_import' template.pk %}" enctype="multipart/form-data" class="stack" style="margin-top:12px">
+      {% csrf_token %}
+      <p class="muted">Excel columns: Section, Field Label, Field Type, Required, Options, Unit, Help Text. If those headers are missing, the first row is imported as text fields.</p>
+      <input class="file-input" type="file" name="workbook" accept=".xlsx" required>
+      <button class="btn-primary" type="submit">Import fields from Excel</button>
+    </form>
+  </section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}Job card field{% endblock %}
+{% block content %}
+<div class="page-head"><div><p class="eyebrow">{{ template.name }}</p><h1>{% if field %}Edit field{% else %}New field{% endif %}</h1></div></div>
+<form method="post" class="card form-grid">{% csrf_token %}{% for field in form %}<div>{% include "includes/field.html" %}</div>{% endfor %}<div class="wide"><button class="btn-primary" type="submit">Save field</button></div></form>
+{% endblock %}

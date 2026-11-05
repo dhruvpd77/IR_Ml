@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% load mqms %}
+{% block title %}{{ role_name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">{{ role_name }}</p>
+    <h1>{{ phase.name|default:"My queue" }}</h1>
+    <p class="muted">{% if serial_url %}Serial numbers and station allocation are both yours. Assembly and Electrical run together, and Testing opens only after both are done.{% else %}Machines currently waiting on your phase.{% endif %}</p>
+  </div>
+  <div class="btn-row">
+    {% include "includes/fullscreen.html" %}
+    <a class="btn-primary" href="{{ queue_url }}">{% if serial_url %}Open stations{% else %}Open queue{% endif %}</a>
+  </div>
+</div>
+<section class="stat-grid">
+  <article class="stat"><span>Reached this phase</span><strong>{{ stats.assigned }}</strong></article>
+  <article class="stat tone-amber"><span>Awaiting action</span><strong>{{ stats.awaiting }}</strong></article>
+  <article class="stat tone-blue"><span>Draft job cards</span><strong>{{ stats.drafts }}</strong></article>
+  <article class="stat tone-red"><span>Rework</span><strong>{{ stats.rework }}</strong></article>
+  <article class="stat tone-green"><span>Submitted</span><strong>{{ stats.submitted }}</strong></article>
+</section>
+<section class="card">
+  <h3>Open machines</h3>
+  <div class="table-wrap" style="border:0">
+    <table class="data-table">
+      <thead><tr><th>Machine</th><th>Work order</th><th>Model</th><th>Priority</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        {% for machine in queue %}
+          <tr>
+            <td><a class="machine-link" href="{% url 'machines:detail' machine.machine_id %}">{{ machine.machine_id }}</a></td>
+            <td>{{ machine.planning.work_order }}</td>
+            <td>{{ machine.planning.model_description }}</td>
+            <td><span class="{{ machine.priority|badge_class }}">{{ machine.priority_label }}</span></td>
+            <td><span class="{{ machine.status|badge_class }}">{{ machine.status_label }}</span></td>
+            <td>{% if can_act %}<a class="btn-ghost" href="{{ queue_url }}">Open</a>{% endif %}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="6" class="empty">Nothing is waiting in this phase.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+</section>
+{% if serial_url %}
+<section class="card">
+  <div class="page-head">
+    <h3>Waiting for a serial number</h3>
+    <a class="btn-ghost" href="{{ serial_url }}">Open serials</a>
+  </div>
+  <div class="table-wrap" style="border:0">
+    <table class="data-table">
+      <thead><tr><th>Machine</th><th>Work order</th><th>Model</th><th></th></tr></thead>
+      <tbody>
+        {% for machine in serial_queue %}
+          <tr>
+            <td><a class="machine-link" href="{% url 'machines:detail' machine.machine_id %}">{{ machine.machine_id }}</a></td>
+            <td>{{ machine.planning.work_order }}</td>
+            <td>{{ machine.planning.model_description }}</td>
+            <td><a class="btn-ghost" href="{{ serial_url }}">Assign</a></td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="4" class="empty">No machine is waiting for a serial.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

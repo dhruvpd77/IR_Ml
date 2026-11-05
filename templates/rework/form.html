@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Raise rework{% endblock %}
+{% block content %}
+<div class="summary-grid">
+  {% include "includes/machine_summary.html" %}
+  <form method="post" enctype="multipart/form-data" class="card stack">
+    {% csrf_token %}
+    <h1>Send {{ machine.machine_id }} back</h1>
+    {% if error %}<div class="message message-error">{{ error }}</div>{% endif %}
+    <label class="field"><span class="field-label">Department that must correct it</span>
+      <select class="field-input" name="target_phase" required>{% for target in targets %}<option value="{{ target.code }}">{{ target.name }}</option>{% endfor %}</select>
+    </label>
+    <label class="field"><span class="field-label">Rejection reason</span><textarea class="field-input" name="reason" rows="4" required></textarea></label>
+    <label class="field"><span class="field-label">Photographs</span><input class="file-input" type="file" name="evidence" accept="image/*" multiple></label>
+    <button class="btn-danger" type="submit">Create rework</button>
+  </form>
+</div>
+{% endblock %}

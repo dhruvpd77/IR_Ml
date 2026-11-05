@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Import planning data{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><p class="eyebrow">Excel</p><h1>Import machines</h1><p class="muted">Use the planning columns: Company, Work Order, CCN, Model Description, Type, Calibration, Test Report Required at Bar, Export Packing Required, Customer Inspection, Priority.</p></div>
+  <a class="btn-ghost" href="{% url 'machines:import_template' %}">Download template</a>
+</div>
+<form method="post" enctype="multipart/form-data" class="card stack">
+  {% csrf_token %}
+  {% for field in form %}{% include "includes/field.html" %}{% endfor %}
+  <button class="btn-primary" type="submit">Preview import</button>
+</form>
+{% endblock %}

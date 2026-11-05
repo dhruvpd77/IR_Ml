@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% load mqms %}
+{% block title %}Machines{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Register</p>
+    <h1>All machines</h1>
+  </div>
+  <div class="btn-row">
+    {% if request.user.is_management or request.user.role == "PRODUCTION_LEADER" %}
+      <a class="btn-ghost" href="{% url 'machines:catalog' %}">Model catalog</a>
+    {% endif %}
+    {% if request.user.is_management or request.user.role == "PLANNING_DATA_ENTRY" %}
+      <a class="btn-ghost" href="{% url 'machines:bulk' %}">Add several</a>
+      <a class="btn-primary" href="{% url 'machines:create' %}">Register machine</a>
+    {% endif %}
+  </div>
+</div>
+<form class="filters" method="get">
+  <input class="field-input" type="search" name="q" value="{{ filters.q }}" placeholder="Search">
+  <select class="field-input" name="status"><option value="">All statuses</option>{% for value, label in statuses %}<option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  <select class="field-input" name="priority"><option value="">All priorities</option>{% for value, label in priorities %}<option value="{{ value }}" {% if filters.priority == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  <select class="field-input" name="phase"><option value="">All phases</option>{% for value, label in phases %}<option value="{{ value }}" {% if filters.phase == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  {% include "includes/station_select.html" with name="station" empty="All stations" selected=filters.station %}
+  <button class="btn-primary" type="submit">Filter</button>
+</form>
+<form method="post" action="{% url 'machines:bulk_submit' %}">
+  {% csrf_token %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th></th>
+          <th><a href="?sort=machine_id&dir=asc">Machine</a></th>
+          <th>Work order</th>
+          <th>Model</th>
+          <th>Serial</th>
+          <th>Station</th>
+          <th>Position</th>
+          <th>Priority</th>
+          <th>Progress</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for machine in page %}
+          <tr>
+            <td>{% if machine.status == "DRAFT" %}<input type="checkbox" name="machines" value="{{ machine.machine_id }}">{% endif %}</td>
+            <td><a class="machine-link" href="{% url 'machines:detail' machine.machine_id %}">{{ machine.machine_id }}</a></td>
+            <td>{{ machine.planning.work_order }}</td>
+            <td>{{ machine.planning.model_description }}</td>
+            <td>{{ machine.planner_serial|default:"—" }}</td>
+            <td>{{ machine.station.code|default:"—" }}</td>
+            <td>{{ machine.pipeline }}<br><span class="{{ machine.status|badge_class }}">{{ machine.status_label }}</span></td>
+            <td><span class="{{ machine.priority|badge_class }}">{{ machine.priority_label }}</span></td>
+            <td><div class="progress"><span style="width: {{ machine.progress_percent }}%"></span></div></td>
+            <td>
+              <div class="btn-row">
+                <a class="btn-ghost" href="{% url 'machines:detail' machine.machine_id %}">Track</a>
+                {% if machine.can_edit %}<a class="btn-ghost" href="{% url 'machines:edit' machine.machine_id %}">Edit</a>{% endif %}
+                {% if machine.can_delete %}<button class="btn-danger" type="submit" form="delete-{{ machine.machine_id }}">Delete</button>{% endif %}
+              </div>
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="10" class="empty">No machines match these filters.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="toolbar" style="margin-top:10px"><button class="btn-ghost" type="submit">Submit selected drafts to production</button></div>
+</form>
+{% for machine in page %}
+  {% if machine.can_delete %}
+    <form id="delete-{{ machine.machine_id }}" method="post" action="{% url 'machines:delete' machine.machine_id %}" data-confirm="Delete {{ machine.machine_id }}? The machine and its job cards will be removed.">{% csrf_token %}</form>
+  {% endif %}
+{% endfor %}
+{% include "includes/pagination.html" %}
+{% endblock %}

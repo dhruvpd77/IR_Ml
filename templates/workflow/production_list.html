@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% load mqms %}
+{% block title %}Production leader{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Production leader</p>
+    <h1>Allocate a station</h1>
+    <p class="muted">Pick the line and station. Assembly and Electrical then work at the same time. Testing opens only after both cards are done.</p>
+  </div>
+  {% include "includes/fullscreen.html" %}
+</div>
+<form method="post">
+  {% csrf_token %}
+  <div class="filters">
+    {% include "includes/station_select.html" with name="station" required=True empty="Location for selected machines" %}
+    <input class="field-input" name="remarks" placeholder="Shared production remarks">
+  </div>
+  <div class="table-wrap"><table class="data-table">
+    <thead><tr><th><input data-select-all=".machine-check" type="checkbox"></th><th>View</th><th>Machine</th><th>Serial</th><th>Model</th><th>Production serial</th><th></th></tr></thead>
+    <tbody>
+      {% for machine in page %}
+        <tr>
+          <td><input class="machine-check" type="checkbox" name="machines" value="{{ machine.machine_id }}"></td>
+          <td><a class="btn-ghost btn-view" href="{% url 'machines:detail' machine.machine_id %}">View</a></td>
+          <td><a class="machine-link" href="{% url 'machines:detail' machine.machine_id %}">{{ machine.machine_id }}</a><br><span class="muted">{{ machine.planning.work_order }}</span></td>
+          <td>{{ machine.planner_serial }}</td>
+          <td>{{ machine.planning.model_description }}</td>
+          <td><input class="field-input" name="pserial_{{ machine.machine_id }}" placeholder="Optional"></td>
+          <td><a class="btn-ghost" href="{% url 'workflow:production_machine' machine.machine_id %}">Open</a></td>
+        </tr>
+      {% empty %}<tr><td colspan="7" class="empty">No machines are waiting for station allocation.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  <div class="toolbar" style="margin-top:12px"><button class="btn-primary" type="submit">Release selected to Assembly and Electrical</button></div>
+</form>
+{% include "includes/pagination.html" %}
+{% endblock %}

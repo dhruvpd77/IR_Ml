@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% load mqms %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">{{ company_name }}</p>
+    <h1>Production control</h1>
+    <p class="muted">Planning, production, the line, testing, end of line, quality and completed add up to the total.</p>
+  </div>
+  <div class="btn-row">
+    {% include "includes/fullscreen.html" %}
+    <a class="btn-ghost" href="{% url 'reports:index' %}">Reports</a>
+    <a class="btn-primary" href="{% url 'machines:list' %}">All machines</a>
+  </div>
+</div>
+<section class="stat-grid">
+  {% for card in stats.cards %}
+    <a class="stat tone-{{ card.tone }}" href="{% url 'core:dashboard_card' card.key %}">
+      <span class="stat-mark" data-lucide="{{ card.icon }}"></span>
+      <span>{{ card.label }}</span>
+      <strong>{{ card.value }}</strong>
+      <em>{{ card.note|default:"View machines" }}</em>
+    </a>
+  {% endfor %}
+</section>
+<section class="chart-grid">
+  <article class="card"><h3>Phase distribution</h3><div class="chart-box"><canvas id="phaseChart"></canvas></div></article>
+  <article class="card"><h3>Priority mix</h3><div class="chart-box"><canvas id="priorityChart"></canvas></div></article>
+</section>
+<section class="chart-grid">
+  <article class="card"><h3>14-day registrations and completions</h3><div class="chart-box"><canvas id="dailyChart"></canvas></div></article>
+  <article class="card">
+    <h3>Average cycle time</h3>
+    <p style="font-size:36px;margin:12px 0">{{ stats.charts.average_label }}</p>
+    <p class="muted">From registration to QC approval. Department completions are shown below.</p>
+    <div class="chart-box" style="height:160px"><canvas id="performanceChart"></canvas></div>
+  </article>
+</section>
+<section class="two-col">
+  <article class="card">
+    <h3>Recent machines</h3>
+    <div class="table-wrap" style="border:0">
+      <table class="data-table">
+        <tbody>
+          {% for machine in recent %}
+            <tr>
+              <td><a class="machine-link" href="{% url 'machines:detail' machine.machine_id %}">{{ machine.machine_id }}</a><br><span class="muted">{{ machine.planning.model_description }}</span></td>
+              <td>{{ machine.pipeline }}</td>
+              <td><span class="{{ machine.status|badge_class }}">{{ machine.status_label }}</span></td>
+            </tr>
+          {% empty %}
+            <tr><td class="empty">No machines registered yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </article>
+  <article class="card">
+    <h3>Latest activity</h3>
+    <ul class="timeline">
+      {% for event in events %}
+        <li><span class="dot"></span><div><strong>{{ event|event_title }}</strong><br><span class="muted">{{ event.machine.machine_id }} · {{ event.actor.display_name|default:"System" }} · {{ event.created_at|date:"d M, H:i" }}</span></div></li>
+      {% empty %}
+        <li>No workflow activity yet.</li>
+      {% endfor %}
+    </ul>
+  </article>
+</section>
+{{ stats.charts|json_script:"chart-data" }}
+{% endblock %}
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const data = JSON.parse(document.getElementById("chart-data").textContent);
+const navy = "#0B1D36";
+const red = "#E10600";
+const blue = "#1D4ED8";
+new Chart(document.getElementById("phaseChart"), {
+  type: "bar",
+  data: { labels: data.phases.labels, datasets: [{ label: "Open", data: data.phases.open, backgroundColor: red }, { label: "Completed", data: data.phases.done, backgroundColor: navy }] },
+  options: { responsive: true, maintainAspectRatio: false }
+});
+new Chart(document.getElementById("priorityChart"), {
+  type: "doughnut",
+  data: { labels: data.priority.labels, datasets: [{ data: data.priority.values, backgroundColor: [red, "#D97706", "#94A3B8"] }] },
+  options: { responsive: true, maintainAspectRatio: false }
+});
+new Chart(document.getElementById("dailyChart"), {
+  type: "line",
+  data: { labels: data.daily.labels, datasets: [{ label: "Registered", data: data.daily.registered, borderColor: navy, tension: .3 }, { label: "QC released", data: data.daily.completed, borderColor: red, tension: .3 }] },
+  options: { responsive: true, maintainAspectRatio: false }
+});
+new Chart(document.getElementById("performanceChart"), {
+  type: "bar",
+  data: { labels: data.performance.labels, datasets: [{ data: data.performance.values, backgroundColor: navy }] },
+  options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block title %}Access restricted{% endblock %}
+{% block content %}
+<section class="card"><h1>You do not have access to that action.</h1><p class="muted">Your role can only work on the production phase assigned to you.</p><a class="btn-primary" href="{% url 'core:dashboard' %}">Back to dashboard</a></section>
+{% endblock %}

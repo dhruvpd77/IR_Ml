@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<div class="page-head"><div><p class="eyebrow">System</p><h1>Settings</h1></div></div>
+<form method="post" enctype="multipart/form-data" class="card stack" style="max-width:720px">
+  {% csrf_token %}
+  {% if logo %}<p class="muted">Current job card logo</p><img class="brand-logo" src="{{ logo.image.url }}" alt="Job card logo">{% endif %}
+  {% for field in form %}{% include "includes/field.html" %}{% endfor %}
+  <button class="btn-primary" type="submit">Save settings</button>
+</form>
+{% endblock %}

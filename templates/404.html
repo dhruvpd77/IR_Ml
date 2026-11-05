@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block title %}Not found{% endblock %}
+{% block content %}
+<section class="card"><h1>That record is not on the floor.</h1><p class="muted">Check the machine ID or return to the machine register.</p><a class="btn-primary" href="{% url 'machines:list' %}">All machines</a></section>
+{% endblock %}

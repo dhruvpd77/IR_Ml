@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}Station{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{% if station %}Edit {{ station.code }}{% else %}New station{% endif %}</h1></div></div>
+<form method="post" class="card form-grid">{% csrf_token %}{% for field in form %}<div>{% include "includes/field.html" %}</div>{% endfor %}<div class="wide"><button class="btn-primary" type="submit">Save station</button></div></form>
+{% endblock %}
