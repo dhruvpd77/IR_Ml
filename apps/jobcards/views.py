@@ -30,6 +30,7 @@ from workflow.engine import (
     WorkflowError,
     approve_qc,
     open_rework,
+    update_finished_qc,
     reachable_rework_targets,
     reject_machine,
     save_job_card_draft,
@@ -58,20 +59,41 @@ def fill(request, phase_code, machine_id):
     except JobCardError as exc:
         messages.error(request, str(exc))
         return redirect("machines:detail", machine.machine_id)
-    editable = bool(state and state.status == PhaseStatus.IN_PROGRESS and can_operate_phase(request.user, phase_code))
-    draft = None
-    if state:
-        draft = (
+    qc_edit = bool(
+        phase_code == PhaseCode.QC
+        and state
+        and state.status == PhaseStatus.COMPLETED
+        and machine.status == "COMPLETED"
+        and can_operate_phase(request.user, phase_code)
+    )
+    record = None
+    if qc_edit:
+        record = (
             JobCardSubmission.objects.filter(
                 machine=machine,
                 phase_code=phase_code,
                 cycle=state.cycle,
-                status=JobCardSubmission.Status.DRAFT,
+                status=JobCardSubmission.Status.SUBMITTED,
             )
-            .order_by("-pk")
+            .order_by("-revision", "-pk")
             .first()
         )
-    values, existing_files = submission_form_state(draft)
+        template = record.template if record is not None else template
+        editable = record is not None
+    else:
+        editable = bool(state and state.status == PhaseStatus.IN_PROGRESS and can_operate_phase(request.user, phase_code))
+        if state:
+            record = (
+                JobCardSubmission.objects.filter(
+                    machine=machine,
+                    phase_code=phase_code,
+                    cycle=state.cycle,
+                    status=JobCardSubmission.Status.DRAFT,
+                )
+                .order_by("-pk")
+                .first()
+            )
+    values, existing_files = submission_form_state(record)
     field_errors = {}
     if request.method == "POST":
         if not editable:
@@ -81,6 +103,12 @@ def fill(request, phase_code, machine_id):
         corrective = request.POST.get("corrective_action", "")
         action = request.POST.get("action") or "submit"
         try:
+            if qc_edit:
+                if action != "update":
+                    raise PermissionDenied
+                update_finished_qc(machine, request.user, answers, uploads, remarks)
+                messages.success(request, f"{machine.machine_id} QC record updated. The machine stays completed.")
+                return redirect("jobcards:fill", phase_code, machine.machine_id)
             if phase_code == PhaseCode.QC and action == "approve":
                 approve_qc(machine, request.user, answers, uploads, remarks)
                 messages.success(request, f"{machine.machine_id} approved and completed.")
@@ -165,9 +193,11 @@ def fill(request, phase_code, machine_id):
             "existing_files": existing_files,
             "field_errors": field_errors,
             "editable": editable,
+            "qc_edit": qc_edit,
+            "saved_remarks": record.remarks if qc_edit and record else "",
             "rework_open": bool(state and state.rework_open),
             "open_rework": open_rework(machine),
-            "targets": reachable_rework_targets(machine) if phase_code == PhaseCode.QC and editable else [],
+            "targets": reachable_rework_targets(machine) if phase_code == PhaseCode.QC and editable and not qc_edit else [],
             "steps": tracking_steps(machine),
             "history": history,
             "is_qc": phase_code == PhaseCode.QC,

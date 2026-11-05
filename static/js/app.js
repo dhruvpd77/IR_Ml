@@ -178,12 +178,16 @@ function bindVideoBox(box) {
   const preview = box.querySelector("[data-video-preview]");
   const status = box.querySelector("[data-video-status]");
   const result = box.querySelector("[data-video-result]");
+  const list = box.querySelector("[data-video-list]");
   const cameraLabel = box.querySelector("[data-video-camera-label]");
   const camera = box.querySelector("[data-video-camera]");
   const gallery = box.querySelector("[data-video-gallery]");
   const record = box.querySelector("[data-video-record]");
   const stop = box.querySelector("[data-video-stop]");
+  const maxBytes = 200 * 1024 * 1024;
+  const maxClips = 8;
   const liveCamera = window.isSecureContext && navigator.mediaDevices && window.MediaRecorder;
+  const selected = [];
   if (liveCamera) {
     cameraLabel.hidden = true;
     record.hidden = false;
@@ -191,49 +195,60 @@ function bindVideoBox(box) {
   let recorder = null;
   let stream = null;
   let timer = null;
-  let previewUrl = "";
 
   function say(text) {
     if (status) status.textContent = text;
   }
 
-  function showFile(file) {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    previewUrl = URL.createObjectURL(file);
-    preview.hidden = false;
-    preview.src = previewUrl;
-    preview.controls = true;
-    const mb = (file.size / (1024 * 1024)).toFixed(1);
-    say(`Ready · ${mb} MB. It is reduced again when you save.`);
-  }
-
-  function store(file) {
+  function sync() {
+    list.replaceChildren();
+    selected.forEach((file, index) => {
+      const item = document.createElement("li");
+      const name = document.createElement("span");
+      const mb = (file.size / (1024 * 1024)).toFixed(1);
+      name.textContent = `${file.name} · ${mb} MB`;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn-ghost";
+      button.textContent = "Remove";
+      button.addEventListener("click", () => {
+        selected.splice(index, 1);
+        sync();
+      });
+      item.append(name, button);
+      list.append(item);
+    });
     const data = new DataTransfer();
-    data.items.add(file);
+    selected.forEach((file) => data.items.add(file));
     result.files = data.files;
-    showFile(file);
+    if (!selected.length) {
+      say("Add one or more inspection videos. Each file can be up to 200 MB. The picture and sound are reduced when you save.");
+    } else {
+      say(`${selected.length} video${selected.length === 1 ? "" : "s"} ready. Quality is reduced when you save.`);
+    }
   }
 
-  async function shrink(file) {
-    if (!window.isSecureContext || !window.MediaRecorder) {
-      store(file);
-      say("Selected. The first 30 seconds are kept and the file is reduced when you save.");
+  function addFile(file) {
+    if (!file || !file.size) return;
+    if (file.size > maxBytes) {
+      say(`${file.name} is over 200 MB. Each video must be 200 MB or smaller.`);
       return;
     }
-    say("Reducing the video…");
-    try {
-      const smaller = await squeezeVideo(file);
-      store(smaller);
-    } catch (error) {
-      store(file);
+    if (selected.length >= maxClips) {
+      say(`You can add up to ${maxClips} videos at a time.`);
+      return;
     }
+    selected.push(file);
+    sync();
   }
 
   gallery.addEventListener("change", () => {
-    if (gallery.files[0]) shrink(gallery.files[0]);
+    Array.from(gallery.files || []).forEach(addFile);
+    gallery.value = "";
   });
   camera.addEventListener("change", () => {
-    if (camera.files[0]) shrink(camera.files[0]);
+    if (camera.files[0]) addFile(camera.files[0]);
+    camera.value = "";
   });
 
   function finishRecording() {
@@ -242,10 +257,12 @@ function bindVideoBox(box) {
     if (stream) stream.getTracks().forEach((track) => track.stop());
     stream = null;
     recorder = null;
-    preview.srcObject = null;
+    if (preview) {
+      preview.srcObject = null;
+      preview.hidden = true;
+    }
     record.hidden = false;
     stop.hidden = true;
-    preview.controls = true;
   }
 
   record.addEventListener("click", async () => {
@@ -259,10 +276,12 @@ function bindVideoBox(box) {
         video: { facingMode: "environment", width: { ideal: 854 }, height: { ideal: 480 } },
         audio: true,
       });
-      preview.hidden = false;
-      preview.controls = false;
-      preview.srcObject = stream;
-      await preview.play();
+      if (preview) {
+        preview.hidden = false;
+        preview.controls = false;
+        preview.srcObject = stream;
+        await preview.play();
+      }
       const mime = ["video/webm;codecs=vp8,opus", "video/webm", "video/mp4"].find(
         (type) => MediaRecorder.isTypeSupported(type)
       );
@@ -279,7 +298,7 @@ function bindVideoBox(box) {
         const type = recorder && recorder.mimeType ? recorder.mimeType : mime || "video/webm";
         const extension = type.includes("mp4") ? "mp4" : "webm";
         finishRecording();
-        store(new File(chunks, `inspection.${extension}`, { type: type.split(";")[0] }));
+        addFile(new File(chunks, `inspection.${extension}`, { type: type.split(";")[0] }));
       };
       recorder.start(250);
       record.hidden = true;
@@ -295,53 +314,5 @@ function bindVideoBox(box) {
   });
   stop.addEventListener("click", () => {
     if (recorder && recorder.state === "recording") recorder.stop();
-  });
-}
-
-function squeezeVideo(file) {
-  return new Promise((resolve, reject) => {
-    const video = document.createElement("video");
-    video.playsInline = true;
-    video.muted = true;
-    video.src = URL.createObjectURL(file);
-    video.onerror = () => reject(new Error("unreadable"));
-    video.onloadedmetadata = async () => {
-      const duration = Math.min(video.duration || 20, 30);
-      const scale = Math.min(1, 854 / (video.videoWidth || 854));
-      const width = Math.max(2, Math.round(((video.videoWidth || 854) * scale) / 2) * 2);
-      const height = Math.max(2, Math.round(((video.videoHeight || 480) * scale) / 2) * 2);
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const context = canvas.getContext("2d");
-      if (!canvas.captureStream) {
-        reject(new Error("no capture"));
-        return;
-      }
-      const output = canvas.captureStream(15);
-      const mime = ["video/webm;codecs=vp8", "video/webm", "video/mp4"].find((type) => MediaRecorder.isTypeSupported(type));
-      const recorder = new MediaRecorder(output, { mimeType: mime || undefined, videoBitsPerSecond: 600000 });
-      const chunks = [];
-      recorder.ondataavailable = (event) => {
-        if (event.data && event.data.size) chunks.push(event.data);
-      };
-      recorder.onstop = () => {
-        URL.revokeObjectURL(video.src);
-        const type = (recorder.mimeType || mime || "video/webm").split(";")[0];
-        resolve(new File(chunks, type.includes("mp4") ? "inspection.mp4" : "inspection.webm", { type }));
-      };
-      recorder.start(250);
-      await video.play();
-      const draw = () => {
-        if (video.ended || video.currentTime >= duration) return;
-        context.drawImage(video, 0, 0, width, height);
-        requestAnimationFrame(draw);
-      };
-      draw();
-      setTimeout(() => {
-        video.pause();
-        if (recorder.state === "recording") recorder.stop();
-      }, duration * 1000 + 150);
-    };
   });
 }

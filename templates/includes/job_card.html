@@ -69,8 +69,8 @@
           </div>
         {% else %}
           {% for item in section.items %}
-            {% if item.media_url %}
-              <div class="print-block"><span>{{ item.label }}</span><video class="clip" controls playsinline src="{{ item.media_url }}"></video></div>
+            {% if item.media_urls %}
+              <div class="print-block"><span>{{ item.label }}</span>{% for url in item.media_urls %}<video class="clip" controls playsinline src="{{ url }}"></video>{% endfor %}</div>
             {% elif item.kind == "long_text" or item.kind == "remarks" %}
               <div class="print-block"><span>{{ item.label }}</span><p>{{ item.value }}</p></div>
             {% else %}
@@ -110,8 +110,8 @@
             </div>
           {% else %}
             {% for item in section.items %}
-              {% if item.media_url %}
-                <div class="print-block"><span>{{ item.label }}</span><video class="clip" controls playsinline src="{{ item.media_url }}"></video></div>
+              {% if item.media_urls %}
+                <div class="print-block"><span>{{ item.label }}</span>{% for url in item.media_urls %}<video class="clip" controls playsinline src="{{ url }}"></video>{% endfor %}</div>
               {% elif item.kind == "long_text" or item.kind == "remarks" %}
                 <div class="print-block"><span>{{ item.label }}</span><p>{{ item.value }}</p></div>
               {% else %}

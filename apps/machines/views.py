@@ -73,6 +73,13 @@ def _actions(user, machine):
             actions.append({"label": f"Open {state.phase.name} job card", "href": f"/job-cards/{state.phase.code}/{machine.machine_id}/"})
         elif state.phase.code == PhaseCode.PLANNING:
             actions.append({"label": "Submit to production", "href": f"/machines/{machine.machine_id}/"})
+    qc_done = (
+        machine.status == MachineStatus.COMPLETED
+        and can_operate_phase(user, PhaseCode.QC)
+        and machine.phase_states.filter(phase__code=PhaseCode.QC, status=PhaseStatus.COMPLETED).exists()
+    )
+    if qc_done:
+        actions.append({"label": "Edit QC record", "href": f"/job-cards/QC/{machine.machine_id}/"})
     return actions
 
 

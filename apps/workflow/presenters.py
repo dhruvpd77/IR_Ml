@@ -224,7 +224,7 @@ def card_items(template, submission=None):
     """Every field on the active card, with a dash where nothing was saved."""
     answered = {}
     if submission is not None:
-        for response in submission.responses.select_related("field"):
+        for response in submission.responses.select_related("field").prefetch_related("attachments"):
             answered[response.field.field_key] = response
     items = []
     for field in template.active_fields():
@@ -232,12 +232,14 @@ def card_items(template, submission=None):
         value = shown_answer(response) if response is not None else "—"
         if not value:
             value = "—"
-        media_url = ""
+        media_urls = []
         if response is not None and field.field_type == "video":
-            attachment = response.attachments.order_by("-pk").first()
-            if attachment:
-                media_url = reverse("jobcards:attachment", args=[attachment.pk])
+            for attachment in response.attachments.order_by("pk"):
+                media_urls.append(reverse("jobcards:attachment", args=[attachment.pk]))
+            if len(media_urls) == 1:
                 value = "Video attached"
+            elif media_urls:
+                value = f"{len(media_urls)} videos attached"
         items.append(
             {
                 "section": field.section or "Details",
@@ -247,7 +249,8 @@ def card_items(template, submission=None):
                 "value": value,
                 "tone": _answer_tone(value),
                 "gujarati": _gujarati(field.label),
-                "media_url": media_url,
+                "media_url": media_urls[0] if media_urls else "",
+                "media_urls": media_urls,
             }
         )
     if submission is not None and submission.remarks:

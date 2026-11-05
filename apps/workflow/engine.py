@@ -26,7 +26,7 @@ from core.constants import (
     PhaseStatus,
     Roles,
 )
-from jobcards.models import MachineAttachment
+from jobcards.models import JobCardSubmission, MachineAttachment
 from jobcards.services import JobCardError, persist_submission
 from machines.models import Machine
 from notifications.services import machine_label, machine_path, notify_roles
@@ -511,6 +511,42 @@ def approve_qc(machine, user, answers, files=None, remarks=""):
         )
         log_audit(user, "qc.approve", instance=machine)
         return machine
+
+
+def update_finished_qc(machine, user, answers, files=None, remarks=""):
+    """Change a completed QC card. The machine stays completed."""
+    _require_operator(user, PhaseCode.QC)
+    phase = _phase(PhaseCode.QC)
+    state = machine.phase_states.filter(phase=phase).first()
+    if state is None or state.status != PhaseStatus.COMPLETED or machine.status != MachineStatus.COMPLETED:
+        raise WorkflowError("This QC record can be edited after the machine is completed.")
+    submission = (
+        JobCardSubmission.objects.filter(
+            machine=machine,
+            phase_code=PhaseCode.QC,
+            cycle=state.cycle,
+            status=JobCardSubmission.Status.SUBMITTED,
+        )
+        .order_by("-revision", "-pk")
+        .first()
+    )
+    if submission is None:
+        raise WorkflowError("There is no QC record to edit.")
+    persist_submission(
+        machine=machine,
+        user=user,
+        phase_code=PhaseCode.QC,
+        cycle=state.cycle,
+        answers=answers,
+        files=files,
+        status=JobCardSubmission.Status.SUBMITTED,
+        remarks=remarks,
+        template=submission.template,
+        allow_existing=True,
+        replace=submission,
+    )
+    log_audit(user, "qc.edit", instance=machine, changes={"submission": submission.pk})
+    return machine
 
 
 def reject_machine(machine, user, target_phase_code, reason, answers=None, files=None, attachment_files=None, remarks=""):

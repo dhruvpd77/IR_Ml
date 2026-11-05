@@ -20,7 +20,14 @@
         <td>{{ machine.planning.model_description }}</td>
         <td>{{ machine.planner_serial|default:"—" }}</td>
         <td><span class="{{ machine.priority|badge_class }}">{{ machine.priority_label }}</span></td>
-        <td class="btn-row">{% if tab != 'done' and can_act %}<a class="btn-ghost" href="{% url 'jobcards:fill' phase.code machine.machine_id %}">Job card</a><form method="post" action="{% url 'machines:pass_phase' machine.machine_id phase.code %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="btn-primary" type="submit">Approved and go to next phase</button></form>{% endif %}</td>
+        <td class="btn-row">
+          {% if tab == 'done' and phase.code == 'QC' and can_act %}
+            <a class="btn-primary" href="{% url 'jobcards:fill' phase.code machine.machine_id %}">Edit</a>
+          {% elif tab != 'done' and can_act %}
+            <a class="btn-ghost" href="{% url 'jobcards:fill' phase.code machine.machine_id %}">Job card</a>
+            <form method="post" action="{% url 'machines:pass_phase' machine.machine_id phase.code %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="btn-primary" type="submit">Approved and go to next phase</button></form>
+          {% endif %}
+        </td>
       </tr>
     {% empty %}<tr><td colspan="7" class="empty">No machines in this view.</td></tr>{% endfor %}
   </tbody>

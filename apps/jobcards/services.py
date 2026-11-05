@@ -16,8 +16,9 @@ IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp"}
 VIDEO_EXT = {".mp4", ".webm", ".mov", ".m4v"}
 DOC_EXT = IMAGE_EXT | {".pdf", ".xlsx", ".xls", ".docx", ".txt", ".csv"}
 MAX_IMAGE = 8 * 1024 * 1024
-MAX_VIDEO = 50 * 1024 * 1024
+MAX_VIDEO = 200 * 1024 * 1024
 MAX_DOC = 15 * 1024 * 1024
+MAX_VIDEOS = 8
 PASS_VALUES = {"Pass", "Fail", "N/A"}
 YES_VALUES = {"Yes", "No"}
 
@@ -54,6 +55,40 @@ def _decimal(value):
         return None
 
 
+def _saved_files(submission):
+    saved = {}
+    responses = submission.responses.select_related("field").prefetch_related("attachments")
+    for response in responses:
+        clips = []
+        for attachment in response.attachments.order_by("pk"):
+            clips.append(
+                {
+                    "pk": attachment.pk,
+                    "name": attachment.file.name,
+                    "original": attachment.original_name,
+                    "kind": attachment.kind,
+                }
+            )
+        if clips:
+            saved[response.field.field_key] = clips
+    return saved
+
+
+def _video_batch(raw):
+    if isinstance(raw, dict):
+        chosen = [item for item in raw.get("files") or [] if item and (getattr(item, "size", 0) or 0) > 0]
+        drop = set()
+        for value in raw.get("drop") or []:
+            try:
+                drop.add(int(value))
+            except (TypeError, ValueError):
+                continue
+        return chosen, drop
+    if raw and (getattr(raw, "size", 0) or 0) > 0:
+        return [raw], set()
+    return [], set()
+
+
 def _kind(filename, field_type):
     if field_type == FieldType.IMAGE:
         return MachineAttachment.Kind.IMAGE
@@ -81,7 +116,7 @@ def _validate_upload(field, upload):
         if ext not in VIDEO_EXT:
             return "Upload an MP4, WEBM, or MOV video."
         if size > MAX_VIDEO:
-            return "Videos must be 50 MB or smaller."
+            return "Each video must be 200 MB or smaller."
     else:
         if ext not in DOC_EXT:
             return "Upload a PDF, Office, text, or image file."
@@ -132,15 +167,21 @@ def persist_submission(
     revision=None,
     template=None,
     allow_existing=False,
+    replace=None,
 ):
     files = files or {}
     answers = answers or {}
-    template = template or (supersedes.template if supersedes else active_template(phase_code))
+    template = template or (replace.template if replace is not None else None) or (
+        supersedes.template if supersedes else active_template(phase_code)
+    )
     fields = list(template.active_fields())
     strict = status == JobCardSubmission.Status.SUBMITTED
     existing = None
     previous_files = {}
-    if supersedes is None:
+    if replace is not None:
+        existing = replace
+        previous_files = _saved_files(existing)
+    elif supersedes is None:
         existing = (
             JobCardSubmission.objects.filter(
                 machine=machine,
@@ -152,35 +193,50 @@ def persist_submission(
             .first()
         )
         if existing:
-            for response in existing.responses.select_related("field").prefetch_related("attachments"):
-                attachment = response.attachments.first()
-                if attachment:
-                    previous_files[response.field.field_key] = {
-                        "name": attachment.file.name,
-                        "original": attachment.original_name,
-                        "kind": attachment.kind,
-                    }
+            previous_files = _saved_files(existing)
+    elif supersedes is not None:
+        previous_files = _saved_files(supersedes)
     errors = {}
     prepared = {}
+    doomed = []
 
     for field in fields:
         raw = answers.get(field.field_key)
         upload = files.get(field.field_key)
-        if upload and field.field_type == FieldType.VIDEO:
-            raw_size = getattr(upload, "size", 0) or 0
-            if raw_size > 120 * 1024 * 1024:
-                errors[field.field_key] = "Record a shorter clip. Videos must be under 120 MB."
-                continue
-            upload = compress_video(upload)
+        if field.field_type == FieldType.VIDEO:
+            incoming, drop = _video_batch(upload)
+            kept = [item for item in previous_files.get(field.field_key, []) if item["pk"] not in drop]
+            doomed.extend(item["pk"] for item in previous_files.get(field.field_key, []) if item["pk"] in drop)
+            compressed = []
+            for one in incoming:
+                size = getattr(one, "size", 0) or 0
+                if size > MAX_VIDEO:
+                    errors[field.field_key] = "Each video must be 200 MB or smaller."
+                    break
+                compressed.append(compress_video(one))
+            else:
+                for one in compressed:
+                    upload_error = _validate_upload(field, one)
+                    if upload_error:
+                        errors[field.field_key] = upload_error
+                        break
+            if field.field_key not in errors and len(compressed) + len(kept) > MAX_VIDEOS:
+                errors[field.field_key] = f"Attach up to {MAX_VIDEOS} videos."
+            elif field.field_key not in errors and strict and field.required and not compressed and not kept:
+                errors[field.field_key] = "This file is required."
+            prepared[field.field_key] = (field, {}, compressed, kept)
+            continue
         if field.field_type in FieldType.FILE_TYPES:
+            uploads = [upload] if upload else []
+            kept = previous_files.get(field.field_key, []) if not upload else []
             if upload:
                 upload_error = _validate_upload(field, upload)
                 if upload_error:
                     errors[field.field_key] = upload_error
                     continue
-            elif strict and field.required and field.field_key not in previous_files:
+            elif strict and field.required and not kept:
                 errors[field.field_key] = "This file is required."
-            prepared[field.field_key] = (field, {}, upload)
+            prepared[field.field_key] = (field, {}, uploads, kept)
             continue
         if upload:
             upload_error = _validate_upload(field, upload)
@@ -188,7 +244,7 @@ def persist_submission(
                 errors[field.field_key] = upload_error
                 continue
         value = _prepare_value(field, raw, upload, strict, errors)
-        prepared[field.field_key] = (field, value, upload)
+        prepared[field.field_key] = (field, value, [], [])
 
     if errors:
         raise JobCardError("Review the highlighted job card fields.", errors)
@@ -206,15 +262,20 @@ def persist_submission(
             if clash.exists():
                 raise JobCardError("A job card for this phase has already been submitted and cannot be overwritten.")
 
+        if existing and doomed:
+            for attachment in MachineAttachment.objects.filter(pk__in=doomed, submission=existing):
+                if attachment.file:
+                    attachment.file.delete(save=False)
         if existing:
             existing.responses.all().delete()
             submission = existing
             submission.template = template
-            submission.operator = user
+            if replace is None:
+                submission.operator = user
             submission.remarks = remarks or ""
             submission.corrective_action = corrective_action or ""
             submission.status = status
-            if status == JobCardSubmission.Status.SUBMITTED:
+            if status == JobCardSubmission.Status.SUBMITTED and not submission.submitted_at:
                 submission.submitted_at = timezone.now()
             submission.save()
         else:
@@ -233,16 +294,18 @@ def persist_submission(
                 submitted_at=timezone.now() if status == JobCardSubmission.Status.SUBMITTED else None,
             )
 
-        for key, (field, value, upload) in prepared.items():
-            if field.field_type in FieldType.FILE_TYPES and not upload and key not in previous_files:
+        for key, (field, value, uploads, kept) in prepared.items():
+            uploads = uploads or []
+            kept = kept or []
+            if field.field_type in FieldType.FILE_TYPES and not uploads and not kept:
                 continue
-            if value is None and not upload and key not in previous_files:
+            if value is None and not uploads and not kept:
                 continue
             response = JobCardResponse.objects.create(submission=submission, field=field, **(value or {}))
-            if upload:
+            for item in kept:
+                _keep_previous_file(machine, submission, response, field, item, user)
+            for upload in uploads:
                 _store_upload(machine, submission, response, field, upload, user)
-            elif key in previous_files and field.field_type in FieldType.FILE_TYPES:
-                _keep_previous_file(machine, submission, response, field, previous_files[key], user)
         return submission
 
 
@@ -375,9 +438,10 @@ def submission_form_state(submission):
             values[key] = response.value_time.strftime("%H:%M")
         else:
             values[key] = response.value_text
-        attachment = response.attachments.first()
-        if attachment:
-            files[key] = attachment
+        clips = list(response.attachments.order_by("pk"))
+        if not clips:
+            continue
+        files[key] = clips if ftype == FieldType.VIDEO else clips[0]
     return values, files
 
 
@@ -385,6 +449,20 @@ def answers_from_request(template, post, files):
     answers = {}
     uploads = {}
     for field in template.active_fields():
+        if field.field_type == FieldType.VIDEO:
+            chosen = [
+                item
+                for item in files.getlist(f"file_{field.field_key}")
+                if item and (getattr(item, "size", 0) or 0) > 0
+            ]
+            drop = []
+            for value in post.getlist(f"drop_video_{field.field_key}"):
+                try:
+                    drop.append(int(value))
+                except (TypeError, ValueError):
+                    continue
+            uploads[field.field_key] = {"files": chosen, "drop": drop}
+            continue
         if field.field_type in FieldType.FILE_TYPES:
             upload = files.get(f"file_{field.field_key}")
             uploads[field.field_key] = upload if upload else None

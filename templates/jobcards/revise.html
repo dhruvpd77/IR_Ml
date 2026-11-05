@@ -28,7 +28,16 @@
             </div>
           {% elif field.field_type == "long_text" or field.field_type == "remarks" %}
             <textarea class="field-input" name="f_{{ field.field_key }}" rows="3">{{ current }}</textarea>
-          {% elif field.field_type == "image" or field.field_type == "file" or field.field_type == "video" %}
+          {% elif field.field_type == "video" %}
+            {% with existing=existing_files|getitem:field.field_key %}
+              {% for clip in existing %}
+                <video class="clip" controls playsinline src="{% url 'jobcards:attachment' clip.pk %}"></video>
+                <label class="muted"><input type="checkbox" name="drop_video_{{ field.field_key }}" value="{{ clip.pk }}"> Remove {{ clip.original_name|default:"this video" }}</label>
+              {% endfor %}
+            {% endwith %}
+            <input class="file-input" type="file" name="file_{{ field.field_key }}" accept="video/*" multiple>
+            <p class="field-help">Each new video can be up to 200 MB. Quality is reduced when you save. Saved videos stay unless you remove them.</p>
+          {% elif field.field_type == "image" or field.field_type == "file" %}
             <input class="file-input" type="file" name="file_{{ field.field_key }}">
           {% else %}
             <input class="field-input" name="f_{{ field.field_key }}" value="{{ current }}">
