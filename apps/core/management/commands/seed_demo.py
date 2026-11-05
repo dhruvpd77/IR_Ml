@@ -4,7 +4,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 from openpyxl import Workbook
 
-from accounts.models import Department, User, get_setting, set_setting
+from accounts.models import Department, User, set_setting
 from core.bootstrap import ensure_reference_data
 from core.constants import ROLE_DEPARTMENT, Roles
 from jobcards.services import active_template
@@ -65,7 +65,7 @@ def sample_answers(user, phase_code):
             answers[field.field_key] = "4"
         elif kind == "signature":
             answers[field.field_key] = {"name": user.display_name, "confirmed": True}
-        elif kind == "dropdown":
+        elif kind in {"dropdown", "radio"}:
             answers[field.field_key] = (field.options or ["OK"])[0]
         elif kind in {"date"}:
             answers[field.field_key] = timezone.localdate().isoformat()
@@ -103,38 +103,40 @@ class Command(BaseCommand):
                 user.set_password(PASSWORD)
                 user.save()
             users[username] = user
-        if get_setting("sample_data_loaded") != "yes":
+        if Machine.objects.exists():
+            self.stdout.write("Machines are already in this database, so no extra fake records were added.")
+        else:
             self._machines(users)
             set_setting("sample_data_loaded", "yes")
             self._workbook()
+            self.stdout.write(self.style.SUCCESS(f"Added {Machine.objects.count()} fake machines."))
         self.stdout.write(self.style.SUCCESS("MQMS demo data is ready."))
         self.stdout.write(f"Password for every demo account: {PASSWORD}")
         self.stdout.write("Super admin: superadmin    Admin: admin")
         self.stdout.write("Two users exist for every phase, for example assembly1 and assembly2.")
 
     def _machines(self, users):
-        station = ProductionStation.objects.get(code="LM1-S4")
-        plan = [
-            ("draft", None),
-            ("planner", None),
-            ("production", None),
-            ("build", None),
-            ("assembly_only", None),
-            ("testing", None),
-            ("eol", None),
-            ("qc", None),
-            ("done", 18),
-            ("done", 14),
-            ("done", 9),
-            ("done", 4),
-            ("rework_open", None),
-            ("rework_qc", None),
-        ]
+        stations = list(ProductionStation.objects.filter(is_active=True).order_by("code"))
+        if not stations:
+            raise RuntimeError("No active stations. Run migrate first so the shop floor is created.")
+        companies = ["Ingersoll Rand", "Champion", "Compair"]
+        plan = (
+            [("draft", None)] * 2
+            + [("planner", None)] * 2
+            + [("production", None)] * 2
+            + [("build", None)] * 2
+            + [("assembly_only", None)] * 3
+            + [("testing", None)] * 5
+            + [("eol", None)] * 5
+            + [("qc", None)] * 2
+            + [("done", age) for age in (18, 14, 9, 4, 2)]
+            + [("rework_open", None), ("rework_qc", None)]
+        )
         for index, (level, age) in enumerate(plan, start=1):
             model, kind = MODELS[index % len(MODELS)]
             machine = register_machine(
                 {
-                    "company": "Ingersoll Rand",
+                    "company": companies[index % len(companies)],
                     "work_order": f"WO-26{100 + index}",
                     "ccn": f"CCN-{7000 + index}",
                     "model_description": model,
@@ -147,7 +149,7 @@ class Command(BaseCommand):
                 },
                 users["planning1"],
             )
-            self._advance(machine, level, users, station, index)
+            self._advance(machine, level, users, stations[index % len(stations)], index)
             machine.refresh_from_db()
             if age and machine.status == "COMPLETED":
                 created = timezone.now() - timedelta(days=age)
