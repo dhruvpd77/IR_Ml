@@ -359,7 +359,7 @@ select.field-input {
   .stage-grid, .stage-glow, .stage-beam, .stage-bar, .stage-kicker, .stage-copy h1 span, .stage-lead, .rail, .rail li, .rail-track i, .console { animation: none; }
 }
 .quick-login { margin-top: 18px; }
-.quick-login-list { display: grid; gap: 8px; max-height: 320px; overflow: auto; padding-right: 4px; }
+.quick-login-list { display: grid; gap: 8px; }
 .quick-account { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 12px; text-align: left; border: 1px solid var(--line); background: white; border-radius: 12px; padding: 10px 12px; cursor: pointer; }
 .quick-account:hover { border-color: var(--red); background: #fff7f7; }
 .quick-account strong, .quick-account small { display: block; }

@@ -1,4 +1,3 @@
-from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
@@ -42,8 +41,6 @@ DEMO_USERNAMES = (
 
 
 def demo_accounts():
-    if not settings.DEBUG:
-        return []
     role_order = [Roles.SUPER_ADMIN, Roles.ADMIN, *Roles.PHASE_ROLES]
     ordering = Case(
         *[When(role=role, then=Value(index)) for index, role in enumerate(role_order)],
