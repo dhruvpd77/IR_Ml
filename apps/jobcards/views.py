@@ -23,6 +23,7 @@ from jobcards.services import (
     answers_from_request,
     attach_qc_video,
     group_fields,
+    qc_card_template,
     remove_qc_video,
     revise_submission,
     submission_form_state,
@@ -81,7 +82,7 @@ def fill(request, phase_code, machine_id):
             .order_by("-revision", "-pk")
             .first()
         )
-        template = record.template if record is not None else template
+        template = qc_card_template(record)
         editable = record is not None
     else:
         editable = bool(state and state.status == PhaseStatus.IN_PROGRESS and can_operate_phase(request.user, phase_code))

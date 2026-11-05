@@ -169,10 +169,22 @@ def _qc_submission(machine):
     raise JobCardError("Quality Control is not open for a video.")
 
 
+def qc_card_template(submission):
+    """Use the current QC card when an older submission has no video field."""
+    if submission is not None and submission.template.fields.filter(field_key="qc_video", is_active=True).exists():
+        return submission.template
+    return active_template("QC")
+
+
 def _qc_video_field(submission):
     field = submission.template.fields.filter(field_key="qc_video", is_active=True).first()
     if field is None:
-        raise JobCardError("This QC card has no video field.")
+        current = qc_card_template(submission)
+        field = current.fields.filter(field_key="qc_video", is_active=True).first()
+        if field is None:
+            raise JobCardError("This QC card has no video field.")
+        submission.template = current
+        submission.save(update_fields=["template"])
     return field
 
 

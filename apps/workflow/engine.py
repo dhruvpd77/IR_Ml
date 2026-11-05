@@ -27,7 +27,7 @@ from core.constants import (
     Roles,
 )
 from jobcards.models import JobCardSubmission, MachineAttachment
-from jobcards.services import JobCardError, persist_submission
+from jobcards.services import JobCardError, persist_submission, qc_card_template
 from machines.models import Machine
 from notifications.services import machine_label, machine_path, notify_roles
 from rework.models import ReworkAction, ReworkRequest
@@ -541,7 +541,7 @@ def update_finished_qc(machine, user, answers, files=None, remarks=""):
         files=files,
         status=JobCardSubmission.Status.SUBMITTED,
         remarks=remarks,
-        template=submission.template,
+        template=qc_card_template(submission),
         allow_existing=True,
         replace=submission,
     )
