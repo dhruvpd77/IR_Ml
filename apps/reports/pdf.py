@@ -12,26 +12,16 @@ from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Tabl
 
 _FONT = "Helvetica"
 _FONT_BOLD = "Helvetica-Bold"
-_NIRMALA = r"C:\Windows\Fonts\Nirmala.ttc"
-if os.path.exists(_NIRMALA):
-    pdfmetrics.registerFont(TTFont("JobCard", _NIRMALA, subfontIndex=0))
-    pdfmetrics.registerFont(TTFont("JobCard-Bold", _NIRMALA, subfontIndex=1))
+_FONT_DIR = os.path.join(os.path.dirname(__file__), "fonts")
+_BUNDLED_REGULAR = os.path.join(_FONT_DIR, "NotoSansGujarati-Regular.ttf")
+_BUNDLED_BOLD = os.path.join(_FONT_DIR, "NotoSansGujarati-Bold.ttf")
+# Bundled so the job card looks the same on Windows and on PythonAnywhere.
+# The Linux system font drops English letters and stacks the remaining text.
+if os.path.exists(_BUNDLED_REGULAR):
+    pdfmetrics.registerFont(TTFont("JobCard", _BUNDLED_REGULAR))
+    pdfmetrics.registerFont(TTFont("JobCard-Bold", _BUNDLED_BOLD if os.path.exists(_BUNDLED_BOLD) else _BUNDLED_REGULAR))
     _FONT = "JobCard"
     _FONT_BOLD = "JobCard-Bold"
-else:
-    for _regular, _bold in (
-        (r"C:\Windows\Fonts\Nirmala.ttf", r"C:\Windows\Fonts\NirmalaB.ttf"),
-        (
-            "/usr/share/fonts/truetype/noto/NotoSansGujarati-Regular.ttf",
-            "/usr/share/fonts/truetype/noto/NotoSansGujarati-Bold.ttf",
-        ),
-    ):
-        if os.path.exists(_regular):
-            pdfmetrics.registerFont(TTFont("JobCard", _regular))
-            pdfmetrics.registerFont(TTFont("JobCard-Bold", _bold if os.path.exists(_bold) else _regular))
-            _FONT = "JobCard"
-            _FONT_BOLD = "JobCard-Bold"
-            break
 
 
 NAVY = colors.HexColor("#0B1D36")
@@ -422,10 +412,11 @@ def _header_block(machine, styles):
     identity = [
         [_text("Planning date", styles["CardLabel"]), _text(date_text, styles["CardValueStrong"]), _text("Model", styles["CardLabel"]), _text(planning.model_description, styles["CardValueStrong"])],
         [_text("Machine serial number", styles["CardLabel"]), _text(machine.planner_serial or "—", styles["CardValueStrong"]), _text("Work order number", styles["CardLabel"]), _text(planning.work_order, styles["CardValueStrong"])],
-        [_text("CCN", styles["CardLabel"]), _text(planning.ccn or "—", styles["CardValueStrong"]), _text("Company", styles["CardLabel"]), _text(planning.company, styles["CardValueStrong"])],
+        [_text("CCN", styles["CardLabel"]), _text(planning.ccn or "—", styles["CardValueStrong"]), _text("Brand", styles["CardLabel"]), _text(planning.company, styles["CardValueStrong"])],
         [_text("Type", styles["CardLabel"]), _text(planning.machine_type or "—", styles["CardValueStrong"]), _text("Priority", styles["CardLabel"]), _text(machine.priority_label, styles["CardValueStrong"])],
-        [_text("Calibration", styles["CardLabel"]), _text(planning.calibration or "—", styles["CardValueStrong"]), _text("Test report bar", styles["CardLabel"]), _text(planning.test_report_bar or "—", styles["CardValueStrong"])],
-        [_text("Export packing", styles["CardLabel"]), _text(planning.export_packing_required or "—", styles["CardValueStrong"]), _text("Customer inspection", styles["CardLabel"]), _text(inspection, styles["CardValueStrong"])],
+        [_text("Calibration", styles["CardLabel"]), _text(planning.calibration or "—", styles["CardValueStrong"]), _text("Shift of machine", styles["CardLabel"]), _text(planning.shift or "—", styles["CardValueStrong"])],
+        [_text("Test report bar", styles["CardLabel"]), _text(planning.test_report_bar or "—", styles["CardValueStrong"]), _text("Export packing", styles["CardLabel"]), _text(planning.export_packing_required or "—", styles["CardValueStrong"])],
+        [_text("Customer inspection", styles["CardLabel"]), _text(inspection, styles["CardValueStrong"]), _text("", styles["CardLabel"]), _text("", styles["CardValueStrong"])],
     ]
     identity_table = Table(identity, colWidths=_widths(22, 28, 22, 28))
     _paint(

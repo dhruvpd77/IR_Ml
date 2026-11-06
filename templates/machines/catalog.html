@@ -16,7 +16,7 @@
 <form method="post" enctype="multipart/form-data" class="card stack" data-confirm="Replace the model list with this workbook?">
   {% csrf_token %}
   {% for field in form %}{% include "includes/field.html" %}{% endfor %}
-  <p class="field-help">Required columns: Company, CCN, Type, Model Description. A repeated model for the same company and type is kept once.</p>
+  <p class="field-help">Required columns: Brand (or Company), CCN, Type, Model Description. A repeated model for the same brand and type is kept once.</p>
   <button class="btn-primary" type="submit">Upload and replace list</button>
 </form>
 <form class="filters-search" method="get">
@@ -27,7 +27,7 @@
   <table class="data-table">
     <thead>
       <tr>
-        <th>Company</th>
+        <th>Brand</th>
         <th>Type</th>
         <th>Model description</th>
         <th>CCN</th>

@@ -1,4 +1,5 @@
 from django.contrib import messages
+from django.db import transaction
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.http import FileResponse, JsonResponse
@@ -13,7 +14,7 @@ from accounts.models import current_logo
 from machines.brand import brand_static
 from accounts.permissions import can_operate_phase, can_view_machine
 from audit.utils import log_audit
-from core.constants import PhaseCode, PhaseStatus
+from core.constants import TEST_AREAS, PhaseCode, PhaseStatus
 from jobcards.forms import FieldForm, TemplateForm
 from jobcards.importers import parse_template_workbook
 from jobcards.models import JobCardField, JobCardSubmission, JobCardTemplate, MachineAttachment
@@ -21,10 +22,12 @@ from jobcards.services import (
     JobCardError,
     active_template,
     answers_from_request,
-    attach_qc_video,
+    attach_qc_photo,
+    attach_testing_video,
     group_fields,
     qc_card_template,
-    remove_qc_video,
+    remove_qc_photo,
+    remove_testing_video,
     revise_submission,
     submission_form_state,
 )
@@ -99,6 +102,7 @@ def fill(request, phase_code, machine_id):
             )
     values, existing_files = submission_form_state(record)
     field_errors = {}
+    chosen_area = machine.test_area
     if request.method == "POST":
         if not editable:
             raise PermissionDenied
@@ -106,59 +110,99 @@ def fill(request, phase_code, machine_id):
         remarks = request.POST.get("remarks", "")
         corrective = request.POST.get("corrective_action", "")
         action = request.POST.get("action") or "submit"
+        skip_required = action in {"submit", "approve"} and request.user.is_management
+        if action == "reject" or skip_required:
+            require_all = False
+        else:
+            require_all = True
+        area = (request.POST.get("test_area") or "").strip()
+        chosen_area = area
+        test_area_error = False
+        def area_missing():
+            return phase_code == PhaseCode.TESTING and require_all and area not in TEST_AREAS
+
         try:
-            if qc_edit:
-                if action != "update":
-                    raise PermissionDenied
-                update_finished_qc(machine, request.user, answers, uploads, remarks)
-                messages.success(request, f"{machine.machine_id} QC record updated. The machine stays completed.")
-                return redirect("jobcards:fill", phase_code, machine.machine_id)
-            if phase_code == PhaseCode.QC and action == "approve":
-                approve_qc(machine, request.user, answers, uploads, remarks)
-                messages.success(request, f"{machine.machine_id} approved and completed.")
-                return redirect("machines:detail", machine.machine_id)
-            if phase_code == PhaseCode.QC and action == "reject":
-                reject_machine(
+            with transaction.atomic():
+                if phase_code == PhaseCode.TESTING and area in TEST_AREAS:
+                    machine.test_area = area
+                    machine.save(update_fields=["test_area", "updated_at"])
+                if qc_edit:
+                    if action != "update":
+                        raise PermissionDenied
+                    update_finished_qc(machine, request.user, answers, uploads, remarks, require_all=require_all, skip_required=False)
+                    if area_missing():
+                        raise JobCardError("Select the testing station.", {})
+                    messages.success(request, f"{machine.machine_id} QC record updated. The machine stays completed.")
+                    return redirect("jobcards:fill", phase_code, machine.machine_id)
+                if phase_code == PhaseCode.QC and action == "approve":
+                    approve_qc(
+                        machine, request.user, answers, uploads, remarks, require_all=require_all, skip_required=skip_required
+                    )
+                    messages.success(request, f"{machine.machine_id} approved and completed.")
+                    return redirect("machines:detail", machine.machine_id)
+                if phase_code == PhaseCode.QC and action == "reject":
+                    reject_machine(
+                        machine,
+                        request.user,
+                        request.POST.get("target_phase", ""),
+                        request.POST.get("reason", ""),
+                        attachment_files=request.FILES.getlist("evidence"),
+                        remarks=remarks,
+                    )
+                    messages.success(request, f"{machine.machine_id} was sent back for rework.")
+                    return redirect("machines:detail", machine.machine_id)
+                if action == "draft":
+                    save_job_card_draft(
+                        machine, request.user, phase_code, answers, uploads, remarks, require_all=require_all
+                    )
+                    if area_missing():
+                        raise JobCardError("Select the testing station.", {})
+                    messages.success(request, "Draft saved.")
+                    return redirect("jobcards:fill", phase_code, machine.machine_id)
+                if phase_code == PhaseCode.TESTING and str(answers.get("test_result") or "") == "NOT OK":
+                    problem = answers.get("test_problem")
+                    if not str(problem or "").strip():
+                        raise JobCardError(
+                            "Describe the problem when testing is not OK.",
+                            {"test_problem": "This field is missing."},
+                        )
+                machine = submit_job_card(
                     machine,
                     request.user,
-                    request.POST.get("target_phase", ""),
-                    request.POST.get("reason", ""),
-                    attachment_files=request.FILES.getlist("evidence"),
-                    remarks=remarks,
+                    phase_code,
+                    answers,
+                    uploads,
+                    remarks,
+                    corrective,
+                    require_all=require_all,
+                    skip_required=skip_required,
                 )
-                messages.success(request, f"{machine.machine_id} was sent back for rework.")
-                return redirect("machines:detail", machine.machine_id)
-            if action == "draft":
-                save_job_card_draft(machine, request.user, phase_code, answers, uploads, remarks)
-                messages.success(request, "Draft saved.")
-                return redirect("jobcards:fill", phase_code, machine.machine_id)
-            if phase_code == PhaseCode.TESTING and str(answers.get("test_result") or "") == "NOT OK":
-                problem = answers.get("test_problem")
-                if not str(problem or "").strip():
-                    raise JobCardError("Describe the problem when testing is not OK.", {"test_problem": "Describe the problem."})
-            machine = submit_job_card(machine, request.user, phase_code, answers, uploads, remarks, corrective)
-            if phase_code in {PhaseCode.ASSEMBLY, PhaseCode.ELECTRICAL}:
-                other = PhaseCode.ELECTRICAL if phase_code == PhaseCode.ASSEMBLY else PhaseCode.ASSEMBLY
-                other_open = machine.phase_states.filter(phase__code=other).exclude(status=PhaseStatus.COMPLETED).exists()
-                if other_open:
-                    messages.success(
-                        request,
-                        f"{machine.machine_id} {phase.name} card is complete. Testing opens after Assembly and Electrical are both done.",
-                    )
+                if area_missing():
+                    raise JobCardError("Select the testing station.", {})
+                if phase_code in {PhaseCode.ASSEMBLY, PhaseCode.ELECTRICAL}:
+                    other = PhaseCode.ELECTRICAL if phase_code == PhaseCode.ASSEMBLY else PhaseCode.ASSEMBLY
+                    other_open = machine.phase_states.filter(phase__code=other).exclude(status=PhaseStatus.COMPLETED).exists()
+                    if other_open:
+                        messages.success(
+                            request,
+                            f"{machine.machine_id} {phase.name} card is complete. Testing opens after Assembly and Electrical are both done.",
+                        )
+                    else:
+                        messages.success(request, f"{machine.machine_id} Assembly and Electrical are both done. It is now with Testing.")
+                elif phase_code == PhaseCode.TESTING:
+                    messages.success(request, f"{machine.machine_id} testing card is complete. It is now at End of Line.")
                 else:
-                    messages.success(request, f"{machine.machine_id} Assembly and Electrical are both done. It is now with Testing.")
-            elif phase_code == PhaseCode.TESTING:
-                messages.success(request, f"{machine.machine_id} testing card is complete. It is now at End of Line.")
-            else:
-                messages.success(request, f"{phase.name} job card submitted.")
-            return redirect("machines:detail", machine.machine_id)
+                    messages.success(request, f"{phase.name} job card submitted.")
+                return redirect("machines:detail", machine.machine_id)
         except JobCardError as exc:
             messages.error(request, str(exc))
             field_errors = exc.field_errors
             values = answers
+            test_area_error = area_missing()
         except WorkflowError as exc:
             messages.error(request, str(exc))
             values = answers
+            test_area_error = area_missing()
     history = (
         machine.job_card_submissions.exclude(status=JobCardSubmission.Status.DRAFT)
         .select_related("operator")
@@ -196,6 +240,9 @@ def fill(request, phase_code, machine_id):
             "values": values,
             "existing_files": existing_files,
             "field_errors": field_errors,
+            "test_areas": TEST_AREAS,
+            "chosen_area": chosen_area,
+            "test_area_error": test_area_error if request.method == "POST" else False,
             "editable": editable,
             "qc_edit": qc_edit,
             "saved_remarks": record.remarks if qc_edit and record else "",
@@ -258,24 +305,17 @@ def revise(request, pk):
     )
 
 
-def _qc_operator(request, machine_id):
-    if not can_operate_phase(request.user, PhaseCode.QC):
+def _phase_operator(request, machine_id, phase_code):
+    if not can_operate_phase(request.user, phase_code):
         raise PermissionDenied
     return _machine(request.user, machine_id)
 
 
-@login_required
-@require_POST
-def qc_video_upload(request, machine_id):
-    machine = _qc_operator(request, machine_id)
-    try:
-        stored = attach_qc_video(machine, request.user, request.FILES.get("video"))
-    except JobCardError as exc:
-        return JsonResponse({"error": str(exc)}, status=400)
+def _media_payload(stored, label):
     return JsonResponse(
         {
             "id": stored.pk,
-            "name": stored.original_name or "Inspection video",
+            "name": stored.original_name or label,
             "url": reverse("jobcards:attachment", args=[stored.pk]),
         }
     )
@@ -283,10 +323,43 @@ def qc_video_upload(request, machine_id):
 
 @login_required
 @require_POST
-def qc_video_remove(request, machine_id, pk):
-    machine = _qc_operator(request, machine_id)
+def testing_video_upload(request, machine_id):
+    machine = _phase_operator(request, machine_id, PhaseCode.TESTING)
     try:
-        remove_qc_video(machine, request.user, pk)
+        stored = attach_testing_video(machine, request.user, request.FILES.get("video"))
+    except JobCardError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+    return _media_payload(stored, "Inspection video")
+
+
+@login_required
+@require_POST
+def testing_video_remove(request, machine_id, pk):
+    machine = _phase_operator(request, machine_id, PhaseCode.TESTING)
+    try:
+        remove_testing_video(machine, request.user, pk)
+    except JobCardError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+    return JsonResponse({"ok": True})
+
+
+@login_required
+@require_POST
+def qc_photo_upload(request, machine_id):
+    machine = _phase_operator(request, machine_id, PhaseCode.QC)
+    try:
+        stored = attach_qc_photo(machine, request.user, request.FILES.get("photo"))
+    except JobCardError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+    return _media_payload(stored, "Inspection photo")
+
+
+@login_required
+@require_POST
+def qc_photo_remove(request, machine_id, pk):
+    machine = _phase_operator(request, machine_id, PhaseCode.QC)
+    try:
+        remove_qc_photo(machine, request.user, pk)
     except JobCardError as exc:
         return JsonResponse({"error": str(exc)}, status=400)
     return JsonResponse({"ok": True})

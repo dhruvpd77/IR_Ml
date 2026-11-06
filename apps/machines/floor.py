@@ -1,20 +1,20 @@
 """Shop-floor lines and the station board used by location pickers and analytics."""
 
-from core.constants import PhaseCode, PhaseStatus, ShopLine
+from django.db.models import Q
+
+from core.constants import TEST_AREAS, MachineStatus, PhaseCode, PhaseStatus, ShopLine
 from machines.models import Machine, ProductionStation
 
 LEGEND = (
-    {"code": "ASSEMBLY", "label": "Assembly", "shape": "circle", "color": "#3b82f6"},
-    {"code": "ELECTRICAL", "label": "Electrical", "shape": "triangle", "color": "#f59e0b"},
-    {"code": "TESTING", "label": "Testing", "shape": "square", "color": "#22c55e"},
-    {"code": "EOL", "label": "End of line", "shape": "diamond", "color": "#a78bfa"},
-    {"code": "QC", "label": "Quality", "shape": "hex", "color": "#fb7185"},
-    {"code": "COMPLETED", "label": "Completed", "shape": "target", "color": "#34d399"},
-    {"code": "REWORK", "label": "Rework", "shape": "star", "color": "#f97316"},
-    {"code": "WAIT", "label": "Allocated", "shape": "dot", "color": "#94a3b8"},
+    {"label": "Assembly", "color": "#2563eb"},
+    {"label": "Electrical", "color": "#d97706"},
+    {"label": "Testing", "color": "#059669"},
+    {"label": "End of line", "color": "#7c3aed"},
+    {"label": "Rework", "color": "#ea580c"},
 )
-_MARK = {item["code"]: item for item in LEGEND}
-_WORK = (PhaseCode.ASSEMBLY, PhaseCode.ELECTRICAL, PhaseCode.TESTING, PhaseCode.EOL, PhaseCode.QC)
+_LINE_TONE = {ShopLine.LM1: "line-1", ShopLine.LM2: "line-2", ShopLine.SMALL: "line-3"}
+_TEST_TONE = {"Test area 1": "area-1", "Test area 2": "area-2", "Test area 3": "area-3"}
+_LINE_TEST = {ShopLine.LM1: TEST_AREAS[0], ShopLine.LM2: TEST_AREAS[1], ShopLine.SMALL: TEST_AREAS[2]}
 
 
 def stations_by_line(active_only=True):
@@ -32,73 +32,172 @@ def stations_by_line(active_only=True):
     ]
 
 
-def _mark(code, live=False):
-    item = dict(_MARK[code])
-    item["live"] = live
-    return item
+def _open_codes(machine):
+    return {
+        state.phase.code
+        for state in machine.phase_states.all()
+        if state.status == PhaseStatus.IN_PROGRESS
+    }
 
 
-def machine_marks(machine):
-    if machine.status == "COMPLETED":
-        return [_mark("COMPLETED", live=False)]
-    states = {state.phase.code: state for state in machine.phase_states.all()}
-    marks = []
+def _zone(machine):
+    phase = machine.current_phase
+    if phase == PhaseCode.TESTING or machine.status == MachineStatus.IN_TESTING:
+        return "testing"
+    if phase == PhaseCode.EOL or machine.status == MachineStatus.IN_EOL:
+        return "eol"
+    if machine.station_id and (
+        machine.status == MachineStatus.IN_PRODUCTION
+        or phase in {PhaseCode.BUILD, PhaseCode.ASSEMBLY, PhaseCode.ELECTRICAL}
+    ):
+        return "assembly"
+    return ""
+
+
+def _dots(machine, zone):
+    open_codes = _open_codes(machine)
+    dots = []
+    if zone == "assembly":
+        if PhaseCode.ASSEMBLY in open_codes:
+            dots.append({"label": "Assembly", "color": "#2563eb"})
+        if PhaseCode.ELECTRICAL in open_codes:
+            dots.append({"label": "Electrical", "color": "#d97706"})
+    elif zone == "testing":
+        dots.append({"label": "Testing", "color": "#059669"})
+    elif zone == "eol":
+        dots.append({"label": "End of line", "color": "#7c3aed"})
     if machine.is_under_rework:
-        marks.append(_mark("REWORK", live=True))
-    for code in _WORK:
-        state = states.get(code)
-        if state and state.status == PhaseStatus.IN_PROGRESS:
-            marks.append(_mark(code, live=True))
-    if not marks:
-        marks.append(_mark("WAIT", live=False))
-    return marks
+        dots.append({"label": "Rework", "color": "#ea580c"})
+    if not dots:
+        dots.append({"label": "At this station", "color": "#64748b"})
+    return dots
 
 
-def floor_board():
-    placed = (
-        Machine.objects.exclude(station_id=None)
+def _testing_area(machine):
+    if machine.test_area in _TEST_TONE:
+        return machine.test_area
+    line = machine.station.line if machine.station_id else ""
+    return _LINE_TEST.get(line, "")
+
+
+def _heat(count):
+    if count <= 0:
+        return 0
+    if count == 1:
+        return 1
+    if count == 2:
+        return 2
+    if count <= 4:
+        return 3
+    return 4
+
+
+def _chip(machine, zone):
+    planning = machine.planning if hasattr(machine, "planning") else None
+    serial = machine.planner_serial or machine.production_serial or ""
+    model = planning.model_description if planning else ""
+    work_order = planning.work_order if planning else ""
+    dots = _dots(machine, zone)
+    detail = " · ".join(dot["label"] for dot in dots)
+    labels = {dot["label"] for dot in dots}
+    if machine.is_under_rework:
+        tone = "rework"
+    elif zone == "testing":
+        tone = "testing"
+    elif zone == "eol":
+        tone = "eol"
+    elif "Assembly" in labels and "Electrical" in labels:
+        tone = "both"
+    elif "Electrical" in labels:
+        tone = "electrical"
+    else:
+        tone = "assembly"
+    return {
+        "id": machine.machine_id,
+        "serial": serial or "No serial",
+        "model": model,
+        "work_order": work_order,
+        "shift": planning.shift if planning else "",
+        "priority": machine.priority_label,
+        "rework": machine.is_under_rework,
+        "dots": dots,
+        "tone": tone,
+        "where": detail,
+        "caption": " · ".join(part for part in (machine.machine_id, serial, model, work_order, detail) if part),
+    }
+
+
+def floor_board(start=None, end=None, on_date=None, shift=""):
+    machines = (
+        Machine.objects.filter(
+            Q(status__in=[
+                MachineStatus.IN_PRODUCTION,
+                MachineStatus.IN_TESTING,
+                MachineStatus.IN_EOL,
+                MachineStatus.UNDER_REWORK,
+            ])
+            | Q(current_phase__in=[
+                PhaseCode.BUILD,
+                PhaseCode.ASSEMBLY,
+                PhaseCode.ELECTRICAL,
+                PhaseCode.TESTING,
+                PhaseCode.EOL,
+            ])
+        )
         .select_related("planning", "station")
         .prefetch_related("phase_states__phase")
         .order_by("machine_id")
     )
+    if on_date:
+        machines = machines.filter(created_at__date=on_date)
+    elif start and end:
+        machines = machines.filter(created_at__gte=start, created_at__lt=end)
+    if shift:
+        machines = machines.filter(planning__shift=shift)
     by_station = {}
-    for machine in placed:
-        marks = machine_marks(machine)
-        by_station.setdefault(machine.station_id, []).append(
-            {
-                "id": machine.machine_id,
-                "model": machine.planning.model_description if hasattr(machine, "planning") else "",
-                "work_order": machine.planning.work_order if hasattr(machine, "planning") else "",
-                "marks": marks,
-                "live": any(mark["live"] for mark in marks),
-                "phase_label": " · ".join(mark["label"] for mark in marks),
-                "caption": machine.machine_id + " · " + " · ".join(mark["label"] for mark in marks),
-            }
-        )
+    by_area = {name: [] for name in TEST_AREAS}
+    eol = []
+    for machine in machines:
+        zone = _zone(machine)
+        if zone == "assembly":
+            by_station.setdefault(machine.station_id, []).append(_chip(machine, zone))
+        elif zone == "testing":
+            area = _testing_area(machine)
+            by_area[area or TEST_AREAS[0]].append(_chip(machine, zone))
+        elif zone == "eol":
+            eol.append(_chip(machine, zone))
     lines = []
-    on_floor = 0
+    assembly_count = 0
     for group in stations_by_line():
         boxes = []
         count = 0
         for station in group["stations"]:
             chips = by_station.get(station.pk, [])
             count += len(chips)
-            tally = []
-            for item in LEGEND:
-                total = sum(1 for chip in chips for mark in chip["marks"] if mark["code"] == item["code"])
-                if total:
-                    tally.append({**item, "count": total, "live": item["code"] not in {"COMPLETED", "WAIT"}})
-            boxes.append({"station": station, "machines": chips, "count": len(chips), "tally": tally})
-        on_floor += count
+            boxes.append({"station": station, "machines": chips, "count": len(chips), "heat": _heat(len(chips))})
+        assembly_count += count
         lines.append(
             {
                 "code": group["code"],
                 "label": group["label"],
-                "tone": "small" if group["code"] == ShopLine.SMALL else "large",
-                "subtitle": "Full assembly" if group["code"] else "Not on a line",
+                "tone": _LINE_TONE.get(group["code"], "line-1"),
                 "boxes": boxes,
                 "count": count,
             }
         )
-    waiting = Machine.objects.filter(station_id=None).exclude(status="COMPLETED").count()
-    return {"lines": lines, "on_floor": on_floor, "waiting": waiting, "legend": LEGEND}
+    test_areas = [
+        {"name": name, "tone": _TEST_TONE[name], "machines": by_area[name], "count": len(by_area[name]), "heat": _heat(len(by_area[name]))}
+        for name in TEST_AREAS
+    ]
+    testing_count = sum(area["count"] for area in test_areas)
+    return {
+        "lines": lines,
+        "test_areas": test_areas,
+        "eol_machines": eol,
+        "assembly_count": assembly_count,
+        "testing_count": testing_count,
+        "eol_count": len(eol),
+        "eol_heat": _heat(len(eol)),
+        "on_floor": assembly_count + testing_count + len(eol),
+        "legend": LEGEND,
+    }

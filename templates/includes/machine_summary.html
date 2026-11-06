@@ -6,7 +6,9 @@
   <dl class="meta-list">
     <div><dt>Work order</dt><dd>{{ machine.planning.work_order }}</dd></div>
     <div><dt>CCN</dt><dd>{{ machine.planning.ccn|default:"—" }}</dd></div>
+    <div><dt>Brand</dt><dd>{{ machine.planning.company|default:"—" }}</dd></div>
     <div><dt>Type</dt><dd>{{ machine.planning.machine_type|default:"—" }}</dd></div>
+    <div><dt>Shift of machine</dt><dd>{{ machine.planning.shift|default:"—" }}</dd></div>
     <div><dt>Calibration</dt><dd>{{ machine.planning.calibration|default:"—" }}</dd></div>
     <div><dt>Test report bar</dt><dd>{{ machine.planning.test_report_bar|default:"—" }}</dd></div>
     <div><dt>Export packing</dt><dd>{{ machine.planning.export_packing_required|default:"—" }}</dd></div>
@@ -15,6 +17,7 @@
     <div><dt>Serial</dt><dd>{{ machine.planner_serial|default:"—" }}</dd></div>
     <div><dt>Production serial</dt><dd>{{ machine.production_serial|default:"—" }}</dd></div>
     <div><dt>Location</dt><dd>{% if machine.station %}{% if machine.station.line_label %}{{ machine.station.line_label }} · {% endif %}{{ machine.station.name }}{% else %}—{% endif %}</dd></div>
+    {% if machine.test_area %}<div><dt>Testing station</dt><dd>{{ machine.test_area }}</dd></div>{% endif %}
     <div><dt>Status</dt><dd><span class="{{ machine.status|badge_class }}">{{ machine.status_label }}</span></dd></div>
   </dl>
 </section>

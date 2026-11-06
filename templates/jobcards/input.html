@@ -11,6 +11,41 @@
         <label class="yn-btn {% if option == 'OK' %}yn-yes{% else %}yn-no{% endif %}"><input type="radio" name="f_{{ field.field_key }}" value="{{ option }}" {% if field.field_key == "test_result" %}data-test-result="1"{% endif %} {% if current == option %}checked{% endif %} {% if not editable %}disabled{% endif %}> {{ option }}</label>
       {% endfor %}
     </div>
+  {% elif field.field_type == "video" %}
+    {% if editable and phase.code == "TESTING" %}
+      <div class="video-box" data-video-box data-upload-url="{% url 'jobcards:testing_video_upload' machine.machine_id %}" data-remove-base="{% url 'jobcards:testing_video_upload' machine.machine_id %}">
+        <div class="video-busy" data-video-busy hidden>
+          <span class="spinner" aria-hidden="true"></span>
+          <p data-video-busy-text>Processing video…</p>
+        </div>
+        <div class="video-saved" data-video-saved>
+          {% with existing=existing_files|getitem:field.field_key %}
+            {% for clip in existing %}
+              <div class="video-clip" data-video-clip="{{ clip.pk }}">
+                <video class="clip" controls playsinline src="{% url 'jobcards:attachment' clip.pk %}"></video>
+                <button class="btn-ghost" type="button" data-video-remove="{{ clip.pk }}">Remove {{ clip.original_name|default:"this video" }}</button>
+              </div>
+            {% endfor %}
+          {% endwith %}
+        </div>
+        <video class="clip" data-video-preview controls playsinline hidden></video>
+        <ul class="video-queue" data-video-list></ul>
+        <p class="muted" data-video-status>Record or choose the inspection video, then press Upload video. Saving the card does not send the video.</p>
+        <div class="btn-row" data-video-actions>
+          <label class="btn-primary video-pick" data-video-camera-label>Record from camera<input type="file" accept="video/*" capture="environment" data-video-camera></label>
+          <button class="btn-primary" type="button" data-video-record hidden>Record from camera</button>
+          <button class="btn-danger" type="button" data-video-stop hidden>Stop</button>
+          <label class="btn-ghost video-pick">Choose from gallery<input type="file" accept="video/*" multiple data-video-gallery></label>
+          <button class="btn-primary" type="button" data-video-upload disabled>Upload video</button>
+        </div>
+      </div>
+    {% else %}
+      {% with existing=existing_files|getitem:field.field_key %}
+        {% for clip in existing %}
+          <video class="clip" controls playsinline src="{% url 'jobcards:attachment' clip.pk %}"></video>
+        {% endfor %}
+      {% endwith %}
+    {% endif %}
   {% elif field.field_type == "long_text" or field.field_type == "remarks" %}
     <textarea class="field-input" name="f_{{ field.field_key }}" rows="4" {% if not editable %}disabled{% endif %}>{{ current }}</textarea>
   {% elif field.field_type == "date" %}

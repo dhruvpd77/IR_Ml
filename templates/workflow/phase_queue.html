@@ -10,7 +10,7 @@
 </nav>
 <form method="get" class="filters"><input type="hidden" name="tab" value="{{ tab }}"><input class="field-input" name="q" value="{{ query }}" placeholder="Search"><button class="btn-ghost">Search</button></form>
 <div class="table-wrap"><table class="data-table">
-  <thead><tr><th>View</th><th>Machine</th><th>Work order</th><th>Model</th><th>Serial</th><th>Priority</th><th></th></tr></thead>
+  <thead><tr><th>View</th><th>Machine</th><th>Work order</th><th>Model</th><th>Serial</th>{% if phase.code == "TESTING" %}<th>Testing station</th>{% endif %}<th>Priority</th><th></th></tr></thead>
   <tbody>
     {% for machine in page %}
       <tr>
@@ -19,6 +19,24 @@
         <td>{{ machine.planning.work_order }}</td>
         <td>{{ machine.planning.model_description }}</td>
         <td>{{ machine.planner_serial|default:"—" }}</td>
+        {% if phase.code == "TESTING" %}
+          <td>
+            {% if tab != "done" and can_act %}
+              <form method="post" action="{% url 'machines:set_test_area' machine.machine_id %}">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <select class="field-input" name="test_area" onchange="this.form.submit()">
+                  <option value="">Select test area</option>
+                  {% for area in test_areas %}
+                    <option value="{{ area }}" {% if machine.test_area == area %}selected{% endif %}>{{ area }}</option>
+                  {% endfor %}
+                </select>
+              </form>
+            {% else %}
+              {{ machine.test_area|default:"—" }}
+            {% endif %}
+          </td>
+        {% endif %}
         <td><span class="{{ machine.priority|badge_class }}">{{ machine.priority_label }}</span></td>
         <td class="btn-row">
           {% if tab == 'done' and phase.code == 'QC' and can_act %}
@@ -29,7 +47,7 @@
           {% endif %}
         </td>
       </tr>
-    {% empty %}<tr><td colspan="7" class="empty">No machines in this view.</td></tr>{% endfor %}
+    {% empty %}<tr><td colspan="{% if phase.code == 'TESTING' %}8{% else %}7{% endif %}" class="empty">No machines in this view.</td></tr>{% endfor %}
   </tbody>
 </table></div>
 {% include "includes/pagination.html" %}

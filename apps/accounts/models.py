@@ -23,7 +23,7 @@ class User(AbstractUser):
         SUPER_ADMIN = Roles.SUPER_ADMIN, "Super Admin"
         ADMIN = Roles.ADMIN, "Admin"
         PLANNING_DATA_ENTRY = Roles.PLANNING_DATA_ENTRY, "Planning Data Entry"
-        PRODUCTION_LEADER = Roles.PRODUCTION_LEADER, "Production Leader"
+        PRODUCTION_LEADER = Roles.PRODUCTION_LEADER, "Serial and station"
         ASSEMBLY = Roles.ASSEMBLY, "Assembly"
         ELECTRICAL = Roles.ELECTRICAL, "Electrical"
         TESTING = Roles.TESTING, "Testing"

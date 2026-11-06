@@ -73,7 +73,12 @@ def export_pdf(request):
     key = request.GET.get("report") or "production"
     title, headers, rows = build_report(key, request.GET)
     subtitle = "Generated " + timezone.localtime().strftime("%d %b %Y %H:%M")
-    return FileResponse(table_pdf(title, subtitle, headers, rows), as_attachment=True, filename=f"{key}-report.pdf")
+    return FileResponse(
+        table_pdf(title, subtitle, headers, rows),
+        as_attachment=True,
+        filename=f"{key}-report.pdf",
+        content_type="application/pdf",
+    )
 
 
 @login_required
@@ -92,4 +97,4 @@ def machine_pdf(request, machine_id):
         raise Http404
     submissions, events, reworks = _dossier(machine)
     buffer = machine_history_pdf(machine, tracking_steps(machine), submissions, events, reworks)
-    return FileResponse(buffer, as_attachment=True, filename=f"{machine.machine_id}.pdf")
+    return FileResponse(buffer, as_attachment=True, filename=f"{machine.machine_id}.pdf", content_type="application/pdf")

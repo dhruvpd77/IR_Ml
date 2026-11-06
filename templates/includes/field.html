@@ -1,5 +1,8 @@
 <div class="field {% if field.errors %}has-error{% endif %}">
   <label class="field-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+  {% if field.name == "model_description" %}
+    <input class="field-input model-search" type="search" data-model-search placeholder="Search model or CCN" autocomplete="off">
+  {% endif %}
   {{ field }}
   {% if field.help_text %}<p class="field-help">{{ field.help_text }}</p>{% endif %}
   {% for error in field.errors %}<p class="field-error">{{ error }}</p>{% endfor %}

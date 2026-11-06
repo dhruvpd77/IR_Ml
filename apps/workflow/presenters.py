@@ -101,7 +101,7 @@ def filled_record(machine, submissions):
                 {
                     "title": "Identity",
                     "fields": [
-                        _field("Company", planning.company),
+                        _field("Brand", planning.company),
                         _field("Type", planning.machine_type),
                         _field("Model description", planning.model_description, wide=True),
                         _field("CCN", planning.ccn),
@@ -112,6 +112,7 @@ def filled_record(machine, submissions):
                     "title": "Requirements",
                     "fields": [
                         _field("Calibration", planning.calibration),
+                        _field("Shift of machine", planning.shift),
                         _field("Test report required at bar", planning.test_report_bar),
                         _field("Export packing required", planning.export_packing_required),
                         _field("Customer inspection", inspection),
@@ -426,10 +427,11 @@ def job_card_view(machine, submissions, steps, reworks=None, until=None):
             {"label": "Machine serial number", "value": machine.planner_serial or "—"},
             {"label": "Work order number", "value": planning.work_order or "—"},
             {"label": "CCN", "value": planning.ccn or "—"},
-            {"label": "Company", "value": planning.company or "—"},
+            {"label": "Brand", "value": planning.company or "—"},
             {"label": "Type", "value": planning.machine_type or "—"},
             {"label": "Priority", "value": machine.priority_label or "—"},
             {"label": "Calibration", "value": planning.calibration or "—"},
+            {"label": "Shift of machine", "value": planning.shift or "—"},
             {"label": "Test report bar", "value": planning.test_report_bar or "—"},
             {"label": "Export packing", "value": planning.export_packing_required or "—"},
             {"label": "Customer inspection", "value": inspection},

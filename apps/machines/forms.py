@@ -19,10 +19,11 @@ TYPE_CHOICES = [
 ]
 TEST_BAR_CHOICES = [
     ("Standard", "Standard"),
-    ("7", "7"),
-    ("8", "8"),
-    ("10", "10"),
-    ("11", "11"),
+    ("Other", "Other"),
+]
+SHIFT_CHOICES = [
+    ("1st shift", "1st shift"),
+    ("2nd shift", "2nd shift"),
 ]
 REQUIREMENT_DEFAULTS = {
     "calibration": "No",
@@ -57,21 +58,27 @@ def _merge_choices(choices, extra):
 
 
 class PlanningForm(forms.Form):
-    company = forms.ChoiceField(choices=SELECT + COMPANY_CHOICES, required=False, label="Company")
+    company = forms.ChoiceField(choices=SELECT + COMPANY_CHOICES, required=False, label="Brand")
     machine_type = forms.ChoiceField(choices=SELECT + TYPE_CHOICES, required=False, label="Type")
     work_order = forms.CharField(required=False, label="Work order", help_text="Type the work order.")
-    ccn = forms.CharField(required=False, label="CCN", help_text="Filled automatically from the selected model.")
+    ccn = forms.CharField(required=False, label="CCN", help_text="Shown in this box after you select a model.")
     model_description = forms.ChoiceField(
         choices=SELECT,
         required=False,
         label="Model description",
-        help_text="Unique models from the uploaded planning Excel.",
+        help_text="Search, then choose a model. The list shows every model for the brand and type.",
     )
     calibration = forms.ChoiceField(choices=SELECT + YES_NO_CHOICES, required=False, label="Calibration")
+    shift = forms.ChoiceField(choices=SELECT + SHIFT_CHOICES, required=False, label="Shift of machine")
     test_report_bar = forms.ChoiceField(
         choices=SELECT + TEST_BAR_CHOICES,
         required=False,
         label="Test report required at bar",
+    )
+    test_report_detail = forms.CharField(
+        required=False,
+        label="Test report",
+        help_text="Write the report in words.",
     )
     export_packing_required = forms.ChoiceField(
         choices=SELECT + YES_NO_CHOICES,
@@ -94,6 +101,11 @@ class PlanningForm(forms.Form):
     def __init__(self, *args, require_row=True, **kwargs):
         self.require_row = require_row
         super().__init__(*args, **kwargs)
+        if not self.is_bound:
+            current_bar = str(self.initial.get("test_report_bar") or "")
+            if current_bar and current_bar not in {"Standard", "Other"}:
+                self.initial["test_report_detail"] = current_bar
+                self.initial["test_report_bar"] = "Other"
         if self.require_row and not self.is_bound:
             for key, value in REQUIREMENT_DEFAULTS.items():
                 self.initial.setdefault(key, value)
@@ -114,10 +126,13 @@ class PlanningForm(forms.Form):
         self.fields["model_description"].widget.attrs["data-model"] = "1"
         self.fields["model_description"].widget.attrs["data-current"] = self._value("model_description")
         self.fields["ccn"].widget.attrs.update({"readonly": "readonly", "data-ccn": "1", "placeholder": "Fills from the model"})
+        self.fields["test_report_bar"].widget.attrs["data-test-report"] = "1"
+        self.fields["test_report_detail"].widget.attrs["placeholder"] = "Write the test report"
         for name, choices in (
             ("company", _merge_choices(COMPANY_CHOICES, extra_companies())),
             ("machine_type", _merge_choices(TYPE_CHOICES, extra_types())),
             ("calibration", YES_NO_CHOICES),
+            ("shift", SHIFT_CHOICES),
             ("test_report_bar", TEST_BAR_CHOICES),
             ("export_packing_required", YES_NO_CHOICES),
             ("customer_inspection", YES_NO_CHOICES),
@@ -140,7 +155,9 @@ class PlanningForm(forms.Form):
             "ccn",
             "machine_type",
             "calibration",
+            "shift",
             "test_report_bar",
+            "test_report_detail",
             "export_packing_required",
             "customer_inspection",
             "priority",
@@ -150,11 +167,12 @@ class PlanningForm(forms.Form):
             data["blank"] = True
             return data
         required = (
-            ("company", "Select a company."),
+            ("company", "Select a brand."),
             ("machine_type", "Select a type."),
             ("work_order", "Work order is required."),
             ("model_description", "Model description is required."),
             ("calibration", "Select calibration."),
+            ("shift", "Select the shift of the machine."),
             ("test_report_bar", "Select the test report bar."),
             ("export_packing_required", "Select export packing."),
             ("customer_inspection", "Select customer inspection."),
@@ -167,6 +185,14 @@ class PlanningForm(forms.Form):
             self.add_error("customer_inspection_date", "Enter the customer inspection date.")
         if data.get("customer_inspection") != "Yes":
             data["customer_inspection_date"] = None
+        detail = str(data.get("test_report_detail") or "").strip()
+        if data.get("test_report_bar") == "Other":
+            if not detail:
+                self.add_error("test_report_detail", "Write the test report.")
+            else:
+                data["test_report_bar"] = detail
+        elif data.get("test_report_bar") == "Standard":
+            data["test_report_bar"] = "Standard"
         from machines.catalog import find_model
 
         model = str(data.get("model_description") or "").strip()
@@ -224,7 +250,7 @@ class StationForm(forms.ModelForm):
         self.fields["line"].required = True
         self.fields["kind"].required = True
         self.fields["line"].help_text = "Shows in the location list and on Machine Analytics."
-        self.fields["kind"].help_text = "Sub assembly, assembly, or final assembly."
+        self.fields["kind"].help_text = "Sub assembly or assembly."
         self.fields["sort_order"].help_text = "Lower numbers sit higher on the line. Use 10 for the top station."
         style_form(self)
 

@@ -58,6 +58,7 @@ def register_machine(data, user, submit=False, raw=None):
             model_description=clean_text(data.get("model_description")),
             machine_type=clean_text(data.get("machine_type")),
             calibration=clean_text(data.get("calibration")),
+            shift=clean_text(data.get("shift")),
             test_report_bar=clean_text(data.get("test_report_bar")),
             export_packing_required=clean_text(data.get("export_packing_required")),
             customer_inspection=clean_text(data.get("customer_inspection")),
@@ -73,20 +74,32 @@ def register_machine(data, user, submit=False, raw=None):
 
 def update_planning(machine, data, user):
     planning = machine.planning
-    planning.company = clean_text(data.get("company")) or planning.company
-    planning.work_order = clean_text(data.get("work_order"))
-    planning.ccn = clean_text(data.get("ccn"))
-    planning.model_description = clean_text(data.get("model_description"))
-    planning.machine_type = clean_text(data.get("machine_type"))
-    planning.calibration = clean_text(data.get("calibration"))
-    planning.test_report_bar = clean_text(data.get("test_report_bar"))
-    planning.export_packing_required = clean_text(data.get("export_packing_required"))
-    planning.customer_inspection = clean_text(data.get("customer_inspection"))
-    planning.customer_inspection_date = data.get("customer_inspection_date") or None
+    text_fields = (
+        "company",
+        "work_order",
+        "ccn",
+        "model_description",
+        "machine_type",
+        "calibration",
+        "shift",
+        "test_report_bar",
+        "export_packing_required",
+        "customer_inspection",
+    )
+    for field in text_fields:
+        if field not in data:
+            continue
+        value = clean_text(data.get(field))
+        if field == "company" and not value:
+            continue
+        setattr(planning, field, value)
+    if "customer_inspection_date" in data:
+        planning.customer_inspection_date = data.get("customer_inspection_date") or None
     planning.save()
-    priority = normalize_priority(data.get("priority")) or machine.priority
-    machine.priority = priority
-    machine.save(update_fields=["priority", "updated_at"])
+    priority = normalize_priority(data.get("priority")) if "priority" in data else None
+    if priority:
+        machine.priority = priority
+        machine.save(update_fields=["priority", "updated_at"])
     log_audit(user, "planning.update", instance=machine, changes={"work_order": planning.work_order})
     return machine
 

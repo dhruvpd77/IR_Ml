@@ -70,6 +70,8 @@ def replace_catalog(upload, user):
     if not header:
         raise CatalogError("The workbook is empty.")
     columns = {_cell(name).lower(): index for index, name in enumerate(header) if _cell(name)}
+    if "brand" in columns and "company" not in columns:
+        columns["company"] = columns["brand"]
     required = ("company", "ccn", "type", "model description")
     missing = [name for name in required if name not in columns]
     if missing:
@@ -108,7 +110,7 @@ def replace_catalog(upload, user):
             )
         )
     if not items:
-        raise CatalogError("No model rows were found. Each row needs Company, Type, Model Description, and CCN.")
+        raise CatalogError("No model rows were found. Each row needs Brand, Type, Model Description, and CCN.")
     with transaction.atomic():
         PlanningCatalogItem.objects.all().delete()
         PlanningCatalogItem.objects.bulk_create(items)

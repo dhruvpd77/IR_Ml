@@ -3,11 +3,12 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <p class="crumbs"><a href="{% url 'core:dashboard' %}">Dashboard</a> / {{ card.label }}</p>
+    <p class="crumbs"><a href="{{ dashboard_back }}">{{ dashboard_name }}</a> / {{ card.label }}</p>
     <h1>{{ card.label }}</h1>
     <p class="muted">{{ count }} machine{{ count|pluralize }}. {{ note }}</p>
   </div>
 </div>
+{% include "includes/type_filter.html" %}
 <div class="table-wrap">
   <table class="data-table">
     <thead>

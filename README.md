@@ -28,8 +28,7 @@ Every demo password is `IrDemo@2026`. Change these before a real deployment.
 | superadmin | Super Admin, full control and Django admin |
 | admin | Admin, full control of the factory screens |
 | planning1, planning2 | Planning Data Entry |
-| planner1, planner2 | Production Leader (serial numbers) |
-| leader1, leader2 | Production Leader |
+| planner1 | Serial and station (serial number and station allocation) |
 | assembly1, assembly2 | Assembly |
 | electrical1, electrical2 | Electrical |
 | testing1, testing2 | Testing |

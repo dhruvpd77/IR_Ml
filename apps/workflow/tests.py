@@ -13,7 +13,7 @@ from jobcards.models import JobCardSubmission
 from machines.catalog import replace_catalog
 from machines.forms import PlanningForm
 from machines.importer import build_import_preview, confirm_import
-from machines.models import PlanningCatalogItem, ProductionStation
+from machines.models import Machine, PlanningCatalogItem, ProductionStation
 from machines.services import register_machine
 from workflow.engine import (
     WorkflowError,
@@ -215,16 +215,57 @@ class ImportTests(TestCase):
         sheet.append(["Company", "Work Order", "CCN", "Model Description", "Type", "Calibration", "Test Report Required at Bar", "Export Packing Required", "Customer Inspection", "Priority"])
         sheet.append(["Ingersoll Rand", "WO-NEW", "CCN-NEW", "Nirvana 75", "Rotary Screw", "Standard", "7 Bar", "No", "No", "High"])
         sheet.append(["Ingersoll Rand", "", "CCN-X", "", "Rotary Screw", "", "", "", "", "High"])
-        sheet.append(["Ingersoll Rand", "WO-T90", "CCN-T90", "R90n Contact-Cooled Rotary 90 kW", "Rotary Screw", "Standard", "7 Bar", "No", "No", "Low"])
+        sheet.append(["Ingersoll Rand", "WO-T90", "CCN-T90", "Updated model", "OF", "Standard", "7 Bar", "No", "No", "Low"])
+        sheet.append(["Ingersoll Rand", "WO-NEW", "CCN-NEW", "Nirvana 75", "Rotary Screw", "Standard", "7 Bar", "No", "No", "High"])
         buffer = io.BytesIO()
         workbook.save(buffer)
         upload = SimpleUploadedFile("planning.xlsx", buffer.getvalue(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        before = Machine.objects.count()
         batch, _unknown = build_import_preview(upload, self.user)
-        self.assertEqual(batch.valid_count, 1)
-        self.assertEqual(batch.duplicate_count, 1)
-        created = confirm_import(batch, self.user)
-        self.assertEqual(len(created), 1)
-        self.assertTrue(created[0].machine_id.startswith("IR-MCH-"))
+        self.assertEqual(batch.valid_count, 3)
+        self.assertEqual(batch.error_count, 1)
+        saved = confirm_import(batch, self.user)
+        self.assertEqual(saved, 2)
+        self.assertEqual(Machine.objects.count(), before)
+        existing = Machine.objects.get(planning__work_order="WO-T90")
+        self.assertEqual(existing.planning.model_description, "R90n Contact-Cooled Rotary 90 kW")
+        self.assertEqual(
+            list(PlanningCatalogItem.objects.filter(model_description="Nirvana 75").values_list("ccn", flat=True)),
+            ["CCN-NEW"],
+        )
+
+    def test_planning_workbook_requires_only_brand_ccn_model_and_type(self):
+        from pathlib import Path
+
+        path = Path(__file__).resolve().parents[2] / "Planning Data.xlsx"
+        self.assertTrue(path.exists())
+        upload = SimpleUploadedFile(
+            "Planning Data.xlsx",
+            path.read_bytes(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        before = Machine.objects.count()
+        batch, unknown = build_import_preview(upload, self.user)
+        self.assertEqual(unknown, [])
+        self.assertEqual(batch.error_count, 0)
+        self.assertEqual(batch.valid_count, 484)
+        rows = list(batch.rows.all())
+        self.assertTrue(all(row.normalized.get("action") == "catalog" for row in rows))
+        saved = confirm_import(batch, self.user)
+        self.assertEqual(saved, 481)
+        self.assertEqual(Machine.objects.count(), before)
+        self.assertFalse(Machine.objects.filter(planning__work_order="WR001MLOK01").exists())
+        self.assertEqual(PlanningCatalogItem.objects.count(), 481)
+
+    def test_planning_excel_is_open_to_admin_and_super_admin(self):
+        admin = make_user("import-admin", Roles.ADMIN)
+        self.client.login(username="planning-import", password="IrDemo@2026")
+        self.assertEqual(self.client.get(reverse("machines:import")).status_code, 403)
+        self.client.login(username=admin.username, password="IrDemo@2026")
+        page = self.client.get(reverse("machines:import"))
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "Upload planning Excel")
+        self.assertContains(page, "Planning Excel")
 
 
 class CatalogTests(TestCase):
@@ -264,6 +305,7 @@ class CatalogTests(TestCase):
                 "ccn": "WRONG",
                 "work_order": "WO-1",
                 "calibration": "No",
+                "shift": "1st shift",
                 "test_report_bar": "Standard",
                 "export_packing_required": "No",
                 "customer_inspection": "No",

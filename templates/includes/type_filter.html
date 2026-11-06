@@ -1,0 +1,6 @@
+<nav class="type-filter" aria-label="Machine type">
+  <a class="{% if not machine_type %}active{% endif %}" href="?{{ filter_keep }}">All types</a>
+  {% for code, label in machine_types %}
+    <a class="{% if machine_type == code %}active{% endif %}" href="?{{ filter_keep }}{% if filter_keep %}&{% endif %}type={{ code }}">{{ label }}</a>
+  {% endfor %}
+</nav>

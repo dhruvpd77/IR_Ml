@@ -3,20 +3,21 @@
 {% block title %}Import preview{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><p class="eyebrow">Preview</p><h1>{{ batch.original_name }}</h1><p class="muted">{{ batch.valid_count }} ready · {{ batch.duplicate_count }} duplicates · {{ batch.error_count }} need attention. Valid rows are created as drafts.</p></div>
+  <div><p class="eyebrow">Preview</p><h1>{{ batch.original_name }}</h1><p class="muted">{{ models }} rows will be added to the Brand, Type, Model description, and CCN dropdowns. {{ batch.error_count }} need attention. No machine is created or changed.</p></div>
   <a class="btn-ghost" href="{% url 'machines:import_errors' batch.pk %}">Error report</a>
 </div>
 <div class="table-wrap">
   <table class="data-table">
-    <thead><tr><th>Row</th><th>Work order</th><th>Model</th><th>Priority</th><th>Result</th></tr></thead>
+    <thead><tr><th>Row</th><th>Brand</th><th>Type</th><th>Model description</th><th>CCN</th><th>Result</th></tr></thead>
     <tbody>
       {% for row in rows %}
         <tr>
           <td>{{ row.row_number }}</td>
-          <td>{{ row.normalized.work_order }}</td>
+          <td>{{ row.normalized.company }}</td>
+          <td>{{ row.normalized.machine_type }}</td>
           <td>{{ row.normalized.model_description }}</td>
-          <td>{{ row.normalized.priority }}</td>
-          <td>{% if row.is_valid %}<span class="badge badge-green">Ready</span>{% else %}<span class="badge badge-red">{{ row.errors|join:", " }}</span>{% endif %}</td>
+          <td>{{ row.normalized.ccn }}</td>
+          <td>{% if row.is_valid %}<span class="badge badge-green">Dropdown</span>{% else %}<span class="badge badge-red">{{ row.errors|join:", " }}</span>{% endif %}</td>
         </tr>
       {% endfor %}
     </tbody>
@@ -25,10 +26,9 @@
 {% if batch.status == "PREVIEW" %}
   <form method="post" action="{% url 'machines:import_confirm' batch.pk %}" class="toolbar" style="margin-top:12px">
     {% csrf_token %}
-    <label><input class="checkbox-input" type="checkbox" name="submit_now" value="yes"> Submit valid rows to the production leader immediately</label>
-    <button class="btn-primary" type="submit" {% if not batch.valid_count %}disabled{% endif %}>Import {{ batch.valid_count }} valid row{{ batch.valid_count|pluralize }}</button>
+    <button class="btn-primary" type="submit" {% if not batch.valid_count %}disabled{% endif %}>Add {{ batch.valid_count }} row{{ batch.valid_count|pluralize }} to the dropdown</button>
   </form>
 {% else %}
-  <p class="message message-success">This file has already been imported. {{ batch.created_count }} machines were created.</p>
+  <p class="message message-success">This file has already been applied. {{ batch.created_count }} row{{ batch.created_count|pluralize }} were saved.</p>
 {% endif %}
 {% endblock %}

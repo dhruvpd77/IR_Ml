@@ -8,7 +8,7 @@ from django.views.decorators.http import require_POST
 from accounts.decorators import management_required
 from accounts.permissions import can_operate_phase
 from audit.utils import log_audit
-from core.constants import PHASE_ROLE, PhaseCode, PhaseStatus
+from core.constants import TEST_AREAS, PHASE_ROLE, PhaseCode, PhaseStatus
 from core.http import paginate, querystring
 from machines.forms import ProductionReleaseForm
 from machines.floor import stations_by_line
@@ -152,6 +152,7 @@ def phase_queue(request, phase_code):
             "query": query,
             "querystring": querystring(request),
             "can_act": can_operate_phase(request.user, phase_code),
+            "test_areas": TEST_AREAS,
         },
     )
 

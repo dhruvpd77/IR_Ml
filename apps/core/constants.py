@@ -17,7 +17,7 @@ class Roles:
         (SUPER_ADMIN, "Super Admin"),
         (ADMIN, "Admin"),
         (PLANNING_DATA_ENTRY, "Planning Data Entry"),
-        (PRODUCTION_LEADER, "Production Leader"),
+        (PRODUCTION_LEADER, "Serial and station"),
         (ASSEMBLY, "Assembly"),
         (ELECTRICAL, "Electrical"),
         (TESTING, "Testing"),
@@ -118,8 +118,11 @@ class StationKind:
     CHOICES = [
         (SUB, "Sub assembly"),
         (ASSEMBLY, "Assembly"),
-        (FINAL, "Final assembly"),
+        (FINAL, "Assembly"),
     ]
+
+
+TEST_AREAS = ("Test area 1", "Test area 2", "Test area 3")
 
 
 class Priority:
@@ -277,14 +280,15 @@ STATUS_FOR_OPENED_PHASE = {
 }
 
 PLANNING_COLUMNS = [
-    ("company", "Company", True),
-    ("work_order", "Work Order", True),
-    ("ccn", "CCN", False),
+    ("company", "Brand", True),
+    ("ccn", "CCN", True),
     ("model_description", "Model Description", True),
-    ("machine_type", "Type", False),
+    ("machine_type", "Type", True),
+    ("work_order", "Work Order", False),
     ("calibration", "Calibration", False),
+    ("shift", "Shift of machine", False),
     ("test_report_bar", "Test Report Required at Bar", False),
     ("export_packing_required", "Export Packing Required", False),
     ("customer_inspection", "Customer Inspection", False),
-    ("priority", "Priority", True),
+    ("priority", "Priority", False),
 ]

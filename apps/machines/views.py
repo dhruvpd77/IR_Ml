@@ -11,7 +11,7 @@ from django.views.decorators.http import require_POST
 from accounts.decorators import management_required, roles_required
 from accounts.permissions import can_delete_machine, can_edit_planning, can_operate_phase, can_reject, can_view_machine
 from audit.utils import log_audit
-from core.constants import MachineStatus, PhaseCode, PhaseStatus, Priority, Roles
+from core.constants import TEST_AREAS, MachineStatus, PhaseCode, PhaseStatus, Priority, Roles
 from core.http import paginate, querystring
 from machines.catalog import CatalogError, models_for, replace_catalog
 from machines.forms import ImportUploadForm, PlanningForm, PlanningFormSet, StationForm
@@ -191,6 +191,7 @@ def machine_edit(request, machine_id):
         "model_description": machine.planning.model_description,
         "machine_type": machine.planning.machine_type,
         "calibration": machine.planning.calibration,
+        "shift": machine.planning.shift,
         "test_report_bar": machine.planning.test_report_bar,
         "export_packing_required": machine.planning.export_packing_required,
         "customer_inspection": machine.planning.customer_inspection,
@@ -345,6 +346,25 @@ def pass_phase_view(request, machine_id, phase_code):
 
 @login_required
 @require_POST
+def set_test_area(request, machine_id):
+    machine = _machine_or_404(request.user, machine_id)
+    if not can_operate_phase(request.user, PhaseCode.TESTING):
+        raise PermissionDenied
+    area = (request.POST.get("test_area") or "").strip()
+    if area not in TEST_AREAS:
+        messages.error(request, "Select Test area 1, Test area 2, or Test area 3.")
+    else:
+        machine.test_area = area
+        machine.save(update_fields=["test_area", "updated_at"])
+        messages.success(request, f"{machine.machine_id} will be tested at {area}.")
+    target = request.POST.get("next") or ""
+    if target.startswith("/") and not target.startswith("//"):
+        return redirect(target)
+    return redirect("workflow:phase", PhaseCode.TESTING)
+
+
+@login_required
+@require_POST
 def add_note(request, machine_id):
     machine = _machine_or_404(request.user, machine_id)
     body = (request.POST.get("body") or "").strip()
@@ -412,7 +432,7 @@ def catalog_lookup(request):
     return JsonResponse({"items": items})
 
 
-@roles_required(Roles.PRODUCTION_LEADER)
+@management_required
 def import_upload(request):
     form = ImportUploadForm(request.POST or None, request.FILES or None)
     if request.method == "POST" and form.is_valid():
@@ -427,40 +447,42 @@ def import_upload(request):
     return render(request, "machines/import_upload.html", {"form": form})
 
 
-@roles_required(Roles.PRODUCTION_LEADER)
+@management_required
 def import_template(request):
     return FileResponse(planning_template_workbook(), as_attachment=True, filename="Planning_Data_Template.xlsx")
 
 
-@roles_required(Roles.PRODUCTION_LEADER)
+@management_required
 def import_preview(request, batch_id):
     batch = get_object_or_404(ImportBatch, pk=batch_id)
-    if not request.user.is_management and batch.uploaded_by_id != request.user.id:
-        raise PermissionDenied
-    return render(request, "machines/import_preview.html", {"batch": batch, "rows": batch.rows.all()})
+    rows = list(batch.rows.all())
+    return render(
+        request,
+        "machines/import_preview.html",
+        {"batch": batch, "rows": rows, "models": batch.valid_count},
+    )
 
 
-@roles_required(Roles.PRODUCTION_LEADER)
+@management_required
 @require_POST
 def import_confirm(request, batch_id):
     batch = get_object_or_404(ImportBatch, pk=batch_id)
-    if not request.user.is_management and batch.uploaded_by_id != request.user.id:
-        raise PermissionDenied
     try:
-        created = confirm_import(batch, request.user, submit=request.POST.get("submit_now") == "yes")
+        saved = confirm_import(batch, request.user)
     except ValueError as exc:
         messages.error(request, str(exc))
         return redirect("machines:import_preview", batch.pk)
-    log_audit(request.user, "machine.import", instance=batch, changes={"created": len(created)}, request=request)
-    messages.success(request, f"Imported {len(created)} machine{'s' if len(created) != 1 else ''}.")
-    return redirect("machines:list")
+    log_audit(request.user, "machine.import", instance=batch, changes={"models": saved}, request=request)
+    messages.success(
+        request,
+        f"{saved} models are in the registration dropdown. Planning can select Brand, Type, Model description, and CCN. No machine was added or changed.",
+    )
+    return redirect("machines:catalog")
 
 
-@roles_required(Roles.PRODUCTION_LEADER)
+@management_required
 def import_errors(request, batch_id):
     batch = get_object_or_404(ImportBatch, pk=batch_id)
-    if not request.user.is_management and batch.uploaded_by_id != request.user.id:
-        raise PermissionDenied
     return FileResponse(error_workbook(batch), as_attachment=True, filename=f"import-errors-{batch.pk}.xlsx")
 
 

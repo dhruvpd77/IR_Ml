@@ -52,6 +52,7 @@ class Machine(models.Model):
         related_name="machines",
     )
     production_remarks = models.TextField(blank=True)
+    test_area = models.CharField(max_length=32, blank=True, default="")
     is_under_rework = models.BooleanField(default=False, db_index=True)
     rework_count = models.PositiveIntegerField(default=0)
     qc_approved_by = models.ForeignKey(
@@ -102,7 +103,8 @@ class MachinePlanningData(models.Model):
     model_description = models.CharField(max_length=240, db_index=True)
     machine_type = models.CharField(max_length=120, blank=True)
     calibration = models.CharField(max_length=160, blank=True)
-    test_report_bar = models.CharField(max_length=80, blank=True)
+    shift = models.CharField(max_length=40, blank=True)
+    test_report_bar = models.CharField(max_length=160, blank=True)
     export_packing_required = models.CharField(max_length=80, blank=True)
     customer_inspection = models.CharField(max_length=80, blank=True)
     customer_inspection_date = models.DateField(null=True, blank=True)
@@ -124,6 +126,35 @@ class MachinePlanningData(models.Model):
 
     def __str__(self):
         return f"{self.work_order} · {self.model_description}"
+
+
+class MonthlyTentativePlan(models.Model):
+    year = models.PositiveIntegerField()
+    month = models.PositiveSmallIntegerField()
+    machine_count = models.PositiveIntegerField(default=0)
+    updated_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="tentative_plans",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-year", "-month"]
+        constraints = [
+            models.UniqueConstraint(fields=["year", "month"], name="uniq_tentative_month"),
+        ]
+
+    def __str__(self):
+        return f"{self.year}-{self.month:02d}: {self.machine_count}"
+
+    @property
+    def period_label(self):
+        from calendar import month_name
+
+        return f"{month_name[self.month]} {self.year}"
 
 
 class MachineNote(models.Model):

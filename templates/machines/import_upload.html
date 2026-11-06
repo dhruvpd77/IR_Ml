@@ -2,7 +2,7 @@
 {% block title %}Import planning data{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><p class="eyebrow">Excel</p><h1>Import machines</h1><p class="muted">Use the planning columns: Company, Work Order, CCN, Model Description, Type, Calibration, Test Report Required at Bar, Export Packing Required, Customer Inspection, Priority.</p></div>
+  <div><p class="eyebrow">Planning data</p><h1>Upload planning Excel</h1><p class="muted">Only Brand, CCN, Model description, and Type are saved. They are added to the dropdowns used when the planning team registers a machine. Work order and the other columns are ignored. Machines already in the shop are not changed.</p></div>
   <a class="btn-ghost" href="{% url 'machines:import_template' %}">Download template</a>
 </div>
 <form method="post" enctype="multipart/form-data" class="card stack">

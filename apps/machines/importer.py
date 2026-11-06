@@ -7,38 +7,39 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
 from core.constants import PLANNING_COLUMNS, Priority
-from machines.models import ImportBatch, ImportRow
-from machines.services import (
-    clean_text,
-    duplicate_fields,
-    duplicate_key,
-    existing_duplicate_keys,
-    normalize_priority,
-    register_machine,
-)
+from machines.catalog import _canonical
+from machines.forms import COMPANY_CHOICES, TYPE_CHOICES
+from machines.models import ImportBatch, ImportRow, PlanningCatalogItem
+from machines.services import clean_text
 
 HEADER_MAP = {}
 for key, label, _required in PLANNING_COLUMNS:
     HEADER_MAP[label.strip().lower()] = key
     HEADER_MAP[key.lower()] = key
     HEADER_MAP[key.replace("_", " ").lower()] = key
+HEADER_MAP["company"] = "company"
+HEADER_MAP["machine id"] = "machine_id"
+HEADER_MAP["machine_id"] = "machine_id"
+HEADER_MAP["cnn"] = "ccn"
 
 
 def planning_template_workbook():
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "Planning Data"
-    headers = [label for _key, label, _required in PLANNING_COLUMNS]
+    headers = ["Machine ID"] + [label for _key, label, _required in PLANNING_COLUMNS]
     sheet.append(headers)
     sheet.append(
         [
+            "",
             "Ingersoll Rand",
-            "WO-26101",
             "CCN-1001",
             "R90n Contact-Cooled Rotary 90 kW",
             "OF",
+            "WO-26101",
             "Yes",
-            "7",
+            "1st shift",
+            "Standard",
             "No",
             "No",
             "1st Priority",
@@ -66,9 +67,7 @@ def _mapped_frame(uploaded):
 def build_import_preview(uploaded, user):
     frame, unknown = _mapped_frame(uploaded)
     uploaded.seek(0)
-    fields = duplicate_fields()
-    seen = set()
-    existing = existing_duplicate_keys(fields)
+    seen_models = set()
     batch = ImportBatch.objects.create(
         source_file=uploaded,
         original_name=getattr(uploaded, "name", "import.xlsx"),
@@ -81,22 +80,24 @@ def build_import_preview(uploaded, user):
         if not any(raw.get(key) for key, _label, _required in PLANNING_COLUMNS):
             continue
         normalized, errors = _normalize_row(raw)
-        key = duplicate_key(normalized, fields)
-        duplicate = False
         if not errors:
-            if key in seen or key in existing:
-                duplicate = True
-                errors.append("Duplicate of an existing machine or another row in this file.")
-            else:
-                seen.add(key)
+            model_key = (
+                clean_text(normalized.get("company")).lower(),
+                clean_text(normalized.get("machine_type")).lower(),
+                clean_text(normalized.get("model_description")).lower(),
+            )
+            normalized["action"] = "catalog"
+            if model_key in seen_models:
+                normalized["note"] = "Same model as an earlier row. The later CCN is kept."
+            seen_models.add(model_key)
         rows.append(
             ImportRow(
                 batch=batch,
                 row_number=offset,
                 raw_data=raw,
                 normalized=normalized,
-                is_valid=not errors and not duplicate,
-                is_duplicate=duplicate,
+                is_valid=not errors,
+                is_duplicate=False,
                 errors=errors,
             )
         )
@@ -119,17 +120,30 @@ def _normalize_row(raw):
         data[key] = clean_text(raw.get(key))
         if required and not data[key]:
             errors.append(f"{_label} is required.")
-    if not data.get("company"):
-        data["company"] = "Ingersoll Rand"
-        errors = [error for error in errors if not error.startswith("Company")]
-    priority = normalize_priority(raw.get("priority"))
-    if not clean_text(raw.get("priority")):
-        errors.append("Priority is required.")
-    elif priority is None:
-        errors.append("Priority must be 1st Priority, 2nd Priority, or standard.")
-    else:
-        data["priority"] = priority
+    if data.get("company"):
+        data["company"] = _canonical(data["company"], COMPANY_CHOICES)
+    if data.get("machine_type"):
+        data["machine_type"] = _canonical(data["machine_type"], TYPE_CHOICES)
     return data, errors
+
+
+def _upsert_catalog(normalized, user):
+    company = clean_text(normalized.get("company"))
+    machine_type = clean_text(normalized.get("machine_type"))
+    model = clean_text(normalized.get("model_description"))
+    ccn = clean_text(normalized.get("ccn"))
+    if not (company and machine_type and model and ccn):
+        return
+    PlanningCatalogItem.objects.update_or_create(
+        company=company[:160],
+        machine_type=machine_type[:120],
+        model_description=model[:240],
+        defaults={
+            "ccn": ccn[:80],
+            "uploaded_by": user if getattr(user, "is_authenticated", False) else None,
+            "uploaded_at": timezone.now(),
+        },
+    )
 
 
 def confirm_import(batch, user, submit=False):
@@ -138,18 +152,23 @@ def confirm_import(batch, user, submit=False):
     valid_rows = list(batch.rows.filter(is_valid=True).order_by("row_number"))
     if not valid_rows:
         raise ValueError("There are no valid rows to import.")
-    created = []
+    keys = set()
     with transaction.atomic():
         for row in valid_rows:
-            machine = register_machine(row.normalized, user, submit=submit, raw=row.raw_data)
-            row.machine = machine
-            row.save(update_fields=["machine"])
-            created.append(machine)
+            normalized = row.normalized or {}
+            _upsert_catalog(normalized, user)
+            keys.add(
+                (
+                    clean_text(normalized.get("company")).lower(),
+                    clean_text(normalized.get("machine_type")).lower(),
+                    clean_text(normalized.get("model_description")).lower(),
+                )
+            )
         batch.status = ImportBatch.Status.COMPLETED
-        batch.created_count = len(created)
+        batch.created_count = len(keys)
         batch.confirmed_at = timezone.now()
         batch.save(update_fields=["status", "created_count", "confirmed_at"])
-    return created
+    return len(keys)
 
 
 def error_workbook(batch):

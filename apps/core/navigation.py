@@ -4,6 +4,10 @@ from core.constants import PHASE_ROLE, PhaseCode, Roles
 
 
 def _visible(user, item):
+    if item.get("hide_management") and user.is_management:
+        return False
+    if item.get("super_admin") and not (user.is_superuser or user.role == Roles.SUPER_ADMIN):
+        return False
     if item.get("management") and not user.is_management:
         return False
     roles = item.get("roles")
@@ -13,11 +17,15 @@ def _visible(user, item):
 
 
 NAV_ITEMS = [
-    {"label": "Dashboard", "url": "core:dashboard", "icon": "layout-dashboard", "highlight": ["dashboard"]},
+    {"label": "Dashboard", "url": "core:dashboard", "icon": "layout-dashboard", "highlight": ["dashboard"], "hide_management": True},
+    {"label": "Monthly dashboard", "url": "core:monthly", "icon": "layout-dashboard", "management": True, "highlight": ["monthly"]},
+    {"label": "Daily dashboard", "url": "core:daily", "icon": "calendar-days", "management": True, "highlight": ["daily"]},
+    {"label": "Tentative planning", "url": "core:tentative", "icon": "calendar-range", "super_admin": True, "highlight": ["tentative"]},
     {"label": "Machine Analytics", "url": "core:analytics", "icon": "layout-grid", "management": True, "highlight": ["analytics"]},
     {"label": "All Machines", "url": "machines:list", "icon": "cpu", "highlight": ["list", "detail", "edit", "create", "bulk"]},
     {"label": "Track", "url": "machines:track", "icon": "route", "management": True, "highlight": ["track"]},
     {"label": "Register Machine", "url": "machines:create", "icon": "plus-circle", "roles": {Roles.PLANNING_DATA_ENTRY}},
+    {"label": "Planning Excel", "url": "machines:import", "icon": "file-spreadsheet", "management": True, "highlight": ["import", "import_preview"]},
     {"label": "Model Catalog", "url": "machines:catalog", "icon": "file-spreadsheet", "roles": {Roles.PRODUCTION_LEADER}, "highlight": ["catalog"]},
     {"label": "Serial numbers", "url": "workflow:planner", "icon": "hash", "roles": {Roles.PRODUCTION_LEADER}, "highlight": ["planner"]},
     {"label": "Stations", "url": "workflow:production", "icon": "factory", "roles": {Roles.PRODUCTION_LEADER}, "highlight": ["production", "production_machine"]},

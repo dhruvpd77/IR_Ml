@@ -33,6 +33,18 @@
     <div class="message message-error">This machine was returned for rework.{% if open_rework %} {{ open_rework.reason }}{% endif %}</div>
     <label class="field"><span class="field-label">Corrective action</span><textarea class="field-input" name="corrective_action" rows="3" {% if not editable %}disabled{% endif %}></textarea></label>
   {% endif %}
+  {% if phase.code == "TESTING" %}
+    <label class="field {% if test_area_error %}is-missing{% endif %}">
+      <span class="field-label">Testing station</span>
+      <select class="field-input" name="test_area" {% if not editable %}disabled{% endif %}>
+        <option value="">Select Test area 1, 2, or 3</option>
+        {% for area in test_areas %}
+          <option value="{{ area }}" {% if chosen_area == area %}selected{% endif %}>{{ area }}</option>
+        {% endfor %}
+      </select>
+      {% if test_area_error %}<p class="field-error">This field is missing.</p>{% endif %}
+    </label>
+  {% endif %}
   {% for group in groups %}
     <section class="sheet-section {% if group.name == 'If not OK' %}not-ok-section{% endif %}" {% if group.name == "If not OK" %}data-not-ok hidden{% endif %}>
       <h2>{{ group.name }}</h2>

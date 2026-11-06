@@ -1,0 +1,8 @@
+<a class="floor-pill tone-{{ machine.tone }}{% if machine.rework %} is-rework{% endif %}" href="{% url 'machines:detail' machine.id %}" title="{{ machine.caption }}">
+  <span class="spot-dots" aria-hidden="true">
+    {% for dot in machine.dots %}
+      <i class="live-dot" style="--c: {{ dot.color }}" title="{{ dot.label }}"></i>
+    {% endfor %}
+  </span>
+  <span class="pill-id">{{ machine.id }}</span>
+</a>

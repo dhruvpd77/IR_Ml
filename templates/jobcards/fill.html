@@ -71,8 +71,8 @@
             {% elif field.field_type == "integer" or field.field_type == "decimal" or field.field_type == "measurement" %}
               <div class="btn-row"><input class="field-input" type="number" step="any" name="f_{{ field.field_key }}" value="{{ current }}" {% if not editable %}disabled{% endif %}>{% if field.unit %}<span class="muted">{{ field.unit }}</span>{% endif %}</div>
             {% elif field.field_type == "video" %}
-              {% if editable and is_qc %}
-                <div class="video-box" data-video-box data-upload-url="{% url 'jobcards:qc_video_upload' machine.machine_id %}" data-remove-base="{% url 'jobcards:qc_video_upload' machine.machine_id %}">
+              {% if editable and phase.code == "TESTING" %}
+                <div class="video-box" data-video-box data-upload-url="{% url 'jobcards:testing_video_upload' machine.machine_id %}" data-remove-base="{% url 'jobcards:testing_video_upload' machine.machine_id %}">
                   <div class="video-busy" data-video-busy hidden>
                     <span class="spinner" aria-hidden="true"></span>
                     <p data-video-busy-text>Processing video…</p>
@@ -89,7 +89,7 @@
                   </div>
                   <video class="clip" data-video-preview controls playsinline hidden></video>
                   <ul class="video-queue" data-video-list></ul>
-                  <p class="muted" data-video-status>Record or choose the inspection video, then press Upload video. The save button below stores the rest of the QC card.</p>
+                  <p class="muted" data-video-status>Record or choose the inspection video, then press Upload video. The save button below stores the rest of the testing card.</p>
                   <div class="btn-row" data-video-actions>
                     <label class="btn-primary video-pick" data-video-camera-label>Record from camera<input type="file" accept="video/*" capture="environment" data-video-camera></label>
                     <button class="btn-primary" type="button" data-video-record hidden>Record from camera</button>
@@ -109,11 +109,44 @@
                   {% endif %}
                 {% endwith %}
               {% endif %}
+            {% elif field.field_type == "image" and is_qc %}
+              {% if editable %}
+                <div class="video-box" data-photo-box data-upload-url="{% url 'jobcards:qc_photo_upload' machine.machine_id %}" data-remove-base="{% url 'jobcards:qc_photo_upload' machine.machine_id %}">
+                  <div class="video-busy" data-photo-busy hidden>
+                    <span class="spinner" aria-hidden="true"></span>
+                    <p data-photo-busy-text>Processing photo…</p>
+                  </div>
+                  <div class="video-saved" data-photo-saved>
+                    {% with existing=existing_files|getitem:field.field_key %}
+                      {% for clip in existing %}
+                        <div class="video-clip" data-photo-clip="{{ clip.pk }}">
+                          <img class="clip" alt="" src="{% url 'jobcards:attachment' clip.pk %}">
+                          <button class="btn-ghost" type="button" data-photo-remove="{{ clip.pk }}">Remove {{ clip.original_name|default:"this photo" }}</button>
+                        </div>
+                      {% endfor %}
+                    {% endwith %}
+                  </div>
+                  <ul class="video-queue" data-photo-list></ul>
+                  <p class="muted" data-photo-status>Take or choose inspection photos, then press Upload photo. Photos are reduced in size. The save button stores the rest of the QC card.</p>
+                  <div class="btn-row">
+                    <label class="btn-primary video-pick">Take a photo<input type="file" accept="image/*" capture="environment" data-photo-camera></label>
+                    <label class="btn-ghost video-pick">Choose photos<input type="file" accept="image/*" multiple data-photo-gallery></label>
+                    <button class="btn-primary" type="button" data-photo-upload disabled>Upload photo</button>
+                  </div>
+                </div>
+              {% else %}
+                {% with existing=existing_files|getitem:field.field_key %}
+                  {% for clip in existing %}
+                    <img class="clip" alt="" src="{% url 'jobcards:attachment' clip.pk %}">
+                  {% endfor %}
+                {% endwith %}
+              {% endif %}
             {% elif field.field_type == "image" or field.field_type == "file" %}
               {% with existing=existing_files|getitem:field.field_key %}
-                {% if existing %}<p><a href="{% url 'jobcards:attachment' existing.pk %}">Current file: {{ existing.original_name }}</a></p>{% endif %}
+                {% if existing.pk %}<p><a href="{% url 'jobcards:attachment' existing.pk %}">Current file: {{ existing.original_name }}</a></p>
+                {% else %}{% for clip in existing %}<p><a href="{% url 'jobcards:attachment' clip.pk %}">{{ clip.original_name }}</a></p>{% endfor %}{% endif %}
               {% endwith %}
-              {% if editable %}<input class="file-input" type="file" name="file_{{ field.field_key }}">{% endif %}
+              {% if editable %}<input class="file-input" type="file" name="file_{{ field.field_key }}" {% if field.field_type == "image" %}accept="image/*"{% endif %}>{% endif %}
             {% else %}
               <input class="field-input" name="f_{{ field.field_key }}" value="{{ current }}" {% if not editable %}disabled{% endif %}>
             {% endif %}
@@ -124,7 +157,7 @@
     {% endfor %}
     <label class="field"><span class="field-label">Submission remarks</span><textarea class="field-input" name="remarks" rows="3" {% if not editable %}disabled{% endif %}>{{ saved_remarks }}</textarea></label>
     {% if qc_edit %}
-      <p class="muted">Save changes stores the notes on this completed QC record. Videos are uploaded with the Upload video button.</p>
+      <p class="muted">Save changes stores the notes on this completed QC record. Photos are uploaded with the Upload photo button.</p>
       <div class="btn-row">
         <button class="btn-primary" name="action" value="update" type="submit">Save changes</button>
       </div>

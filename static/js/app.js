@@ -3,13 +3,57 @@ function catalogUrl() {
   return form ? form.dataset.catalogUrl : "";
 }
 
+function ccnField(scope) {
+  return scope && scope.querySelector("input[data-ccn]");
+}
+
+function optionCcn(option) {
+  if (!option) return "";
+  const stored = option.getAttribute("data-ccn");
+  if (stored) return stored;
+  const text = option.text || "";
+  const mark = text.lastIndexOf("·");
+  return mark === -1 ? "" : text.slice(mark + 1).trim();
+}
+
 function applyCcn(select) {
   const scope = select.closest(".form-grid") || select.closest("form");
-  const ccn = scope && scope.querySelector("[data-ccn]");
-  const option = select.selectedOptions[0];
+  const ccn = ccnField(scope);
+  const option = select.selectedOptions && select.selectedOptions[0];
   if (!ccn) return;
-  if (option && option.dataset.ccn) ccn.value = option.dataset.ccn;
-  else if (!select.value) ccn.value = "";
+  if (!select.value) {
+    ccn.value = "";
+    return;
+  }
+  ccn.value = optionCcn(option);
+}
+
+function paintModels(select, items, query, selected) {
+  const needle = (query || "").trim().toLowerCase();
+  const matches = (items || []).filter((item) => {
+    if (!needle) return true;
+    return item.model.toLowerCase().includes(needle) || String(item.ccn || "").toLowerCase().includes(needle);
+  });
+  if (selected && !matches.some((item) => item.model === selected)) {
+    const current = (items || []).find((item) => item.model === selected);
+    if (current) matches.unshift(current);
+  }
+  select.replaceChildren();
+  select.add(new Option(matches.length ? "Select" : "No matching model", ""));
+  matches.forEach((item) => {
+    const option = new Option(item.ccn ? `${item.model}  ·  ${item.ccn}` : item.model, item.model);
+    option.setAttribute("data-ccn", item.ccn || "");
+    select.add(option);
+  });
+  if (selected && ![...select.options].some((option) => option.value === selected)) {
+    const extra = new Option(selected, selected);
+    const scope = select.closest(".form-grid") || select.closest("form");
+    const ccn = ccnField(scope);
+    extra.setAttribute("data-ccn", (ccn && ccn.value) || "");
+    select.add(extra);
+  }
+  if (selected) select.value = selected;
+  applyCcn(select);
 }
 
 async function refreshModels(select) {
@@ -18,12 +62,15 @@ async function refreshModels(select) {
   const scope = select.closest(".form-grid") || select.closest("form");
   const company = scope.querySelector('[name$="company"]');
   const type = scope.querySelector('[name$="machine_type"]');
-  const ccn = scope.querySelector("[data-ccn]");
+  const ccn = ccnField(scope);
+  const search = scope.querySelector("[data-model-search]");
   if (!company || !type) return;
   const current = select.value || select.dataset.current || "";
   if (!company.value || !type.value) {
-    select.replaceChildren(new Option("Select company and type first", ""));
+    select._models = [];
+    select.replaceChildren(new Option("Select brand and type first", ""));
     if (ccn && !current) ccn.value = "";
+    if (search) search.value = "";
     return;
   }
   try {
@@ -33,21 +80,9 @@ async function refreshModels(select) {
     );
     if (!response.ok) throw new Error("lookup failed");
     const data = await response.json();
-    select.replaceChildren();
-    select.add(new Option(data.items.length ? "Select" : "No models for this company and type", ""));
-    data.items.forEach((item) => {
-      const option = new Option(item.ccn ? `${item.model}  ·  ${item.ccn}` : item.model, item.model);
-      option.value = item.model;
-      option.dataset.ccn = item.ccn;
-      select.add(option);
-    });
-    if (current && ![...select.options].some((option) => option.value === current)) {
-      const extra = new Option(current, current);
-      if (ccn && ccn.value) extra.dataset.ccn = ccn.value;
-      select.add(extra);
-    }
-    if (current) select.value = current;
-    applyCcn(select);
+    select._models = data.items || [];
+    if (search) search.value = "";
+    paintModels(select, select._models, "", current);
   } catch (error) {
     select.replaceChildren(new Option("Could not load models", ""));
   }
@@ -58,6 +93,15 @@ function syncTestResult() {
   if (!problem) return;
   const chosen = document.querySelector('[name="f_test_result"]:checked');
   problem.hidden = !chosen || chosen.value !== "NOT OK";
+}
+
+function syncTestReports(root) {
+  (root || document).querySelectorAll("[data-test-report]").forEach((select) => {
+    const scope = select.closest(".form-grid") || select.closest("form") || document;
+    const extra = scope.querySelector("[data-test-report-other]");
+    if (!extra) return;
+    extra.hidden = select.value !== "Other";
+  });
 }
 
 function syncInspectionDates(root) {
@@ -103,7 +147,8 @@ document.addEventListener("DOMContentLoaded", () => {
         if (field.name) field.name = field.name.replace(/-\d+-/, `-${index}-`);
         if (field.id) field.id = field.id.replace(/-\d+-/, `-${index}-`);
         if (field.matches("[data-model]")) {
-          field.replaceChildren(new Option("Select company and type first", ""));
+          field.replaceChildren(new Option("Select brand and type first", ""));
+          field._models = [];
           delete field.dataset.current;
         } else if (field.tagName === "SELECT") {
           field.selectedIndex = 0;
@@ -115,9 +160,11 @@ document.addEventListener("DOMContentLoaded", () => {
       formset.querySelector("[data-rows]").appendChild(clone);
       total.value = String(index + 1);
       syncInspectionDates(clone);
+      syncTestReports(clone);
     });
   }
   syncInspectionDates(document);
+  syncTestReports(document);
   syncTestResult();
   document.addEventListener("change", (event) => {
     if (event.target.matches("[data-test-result]")) syncTestResult();
@@ -125,18 +172,28 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll("[data-model]").forEach((select) => refreshModels(select));
   document.addEventListener("change", (event) => {
     if (event.target.matches("[data-inspection]")) syncInspectionDates(event.target.closest(".form-grid") || document);
+    if (event.target.matches("[data-test-report]")) syncTestReports(event.target.closest(".form-grid") || document);
     if (event.target.matches('[name$="company"], [name$="machine_type"]')) {
       const scope = event.target.closest(".form-grid") || event.target.closest("form");
       const model = scope && scope.querySelector("[data-model]");
       if (model) {
         model.value = "";
         delete model.dataset.current;
-        const ccn = scope.querySelector("[data-ccn]");
+        const ccn = ccnField(scope);
         if (ccn) ccn.value = "";
         refreshModels(model);
       }
     }
     if (event.target.matches("[data-model]")) applyCcn(event.target);
+  });
+  document.addEventListener("input", (event) => {
+    if (!event.target.matches("[data-model-search]")) return;
+    const scope = event.target.closest(".form-grid") || event.target.closest("form");
+    const model = scope && scope.querySelector("[data-model]");
+    if (model) paintModels(model, model._models || [], event.target.value, model.value);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.target.matches("[data-model-search]") && event.key === "Enter") event.preventDefault();
   });
   document.querySelectorAll(".data-table").forEach((table) => {
     const headers = [...table.querySelectorAll("thead th")].map((cell) => cell.textContent.trim());
@@ -162,20 +219,220 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   document.querySelectorAll("[data-fullscreen]").forEach((button) => {
     const target = document.getElementById(button.dataset.fullscreen);
-    if (!target || !target.requestFullscreen) return;
-    const sync = () => button.setAttribute("aria-pressed", document.fullscreenElement === target ? "true" : "false");
+    if (!target) return;
+    const active = () => document.fullscreenElement || document.webkitFullscreenElement;
+    const sync = () => {
+      const on = active() === target;
+      target.classList.toggle("is-fullscreen", on);
+      button.setAttribute("aria-pressed", on ? "true" : "false");
+    };
     button.addEventListener("click", () => {
-      if (document.fullscreenElement === target) document.exitFullscreen();
-      else target.requestFullscreen().catch(() => {});
+      if (active() === target) {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if (exit) exit.call(document);
+        return;
+      }
+      const enter = target.requestFullscreen || target.webkitRequestFullscreen;
+      if (enter) enter.call(target).catch(() => {});
     });
     document.addEventListener("fullscreenchange", sync);
+    document.addEventListener("webkitfullscreenchange", sync);
   });
   if (window.lucide) window.lucide.createIcons();
   document.querySelectorAll("[data-video-box]").forEach((box) => {
     if (box.dataset.uploadUrl) bindQcVideoBox(box);
     else bindVideoBox(box);
   });
+  document.querySelectorAll("[data-photo-box]").forEach((box) => bindPhotoBox(box));
+  const paintClock = () => {
+    const now = new Date();
+    const text = now.toLocaleString("en-IN", {
+      weekday: "short",
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    document.querySelectorAll("[data-clock]").forEach((node) => {
+      node.textContent = text;
+    });
+  };
+  paintClock();
+  setInterval(paintClock, 1000);
 });
+
+function bindPhotoBox(box) {
+  const status = box.querySelector("[data-photo-status]");
+  const list = box.querySelector("[data-photo-list]");
+  const saved = box.querySelector("[data-photo-saved]");
+  const busy = box.querySelector("[data-photo-busy]");
+  const busyText = box.querySelector("[data-photo-busy-text]");
+  const upload = box.querySelector("[data-photo-upload]");
+  const camera = box.querySelector("[data-photo-camera]");
+  const gallery = box.querySelector("[data-photo-gallery]");
+  const maxBytes = 20 * 1024 * 1024;
+  const maxPhotos = 8;
+  const selected = [];
+  const token = document.querySelector("[name=csrfmiddlewaretoken]");
+  let working = false;
+
+  function say(text) {
+    if (status) status.textContent = text;
+  }
+
+  function setBusy(on, text) {
+    working = on;
+    box.classList.toggle("is-busy", on);
+    if (busy) busy.hidden = !on;
+    if (busyText && text) busyText.textContent = text;
+    if (upload) upload.disabled = on || !selected.length;
+  }
+
+  function sync() {
+    list.replaceChildren();
+    selected.forEach((file, index) => {
+      const item = document.createElement("li");
+      const name = document.createElement("span");
+      name.textContent = `${file.name} · ${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn-ghost";
+      button.textContent = "Remove";
+      button.addEventListener("click", () => {
+        selected.splice(index, 1);
+        sync();
+      });
+      item.append(name, button);
+      list.append(item);
+    });
+    if (upload) upload.disabled = working || !selected.length;
+    if (!selected.length) {
+      say("Take or choose inspection photos, then press Upload photo. Photos are reduced in size.");
+    } else {
+      say(`${selected.length} photo${selected.length === 1 ? "" : "s"} waiting. Press Upload photo.`);
+    }
+  }
+
+  function addSaved(photo) {
+    const clip = document.createElement("div");
+    clip.className = "video-clip";
+    clip.dataset.photoClip = String(photo.id);
+    const image = document.createElement("img");
+    image.className = "clip";
+    image.alt = "";
+    image.src = photo.url;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn-ghost";
+    button.textContent = `Remove ${photo.name}`;
+    button.addEventListener("click", () => removeSaved(photo.id, clip));
+    clip.append(image, button);
+    saved.append(clip);
+  }
+
+  function addFile(file) {
+    if (!file || !file.size || working) return;
+    if (!file.type.startsWith("image/")) {
+      say("Choose a photo.");
+      return;
+    }
+    if (file.size > maxBytes) {
+      say(`${file.name} is over 20 MB. Each photo must be 20 MB or smaller.`);
+      return;
+    }
+    const already = saved.querySelectorAll("[data-photo-clip]").length;
+    if (already + selected.length >= maxPhotos) {
+      say(`You can keep up to ${maxPhotos} photos.`);
+      return;
+    }
+    selected.push(file);
+    sync();
+  }
+
+  async function send(file) {
+    const body = new FormData();
+    body.append("photo", file);
+    const response = await fetch(box.dataset.uploadUrl, {
+      method: "POST",
+      body,
+      headers: { "X-CSRFToken": token ? token.value : "" },
+      credentials: "same-origin",
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "The photo could not be uploaded.");
+    return data;
+  }
+
+  async function removeSaved(id, clip) {
+    if (working) return;
+    setBusy(true, "Removing photo…");
+    try {
+      const response = await fetch(`${box.dataset.removeBase}${id}/remove/`, {
+        method: "POST",
+        headers: { "X-CSRFToken": token ? token.value : "" },
+        credentials: "same-origin",
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "The photo could not be removed.");
+      clip.remove();
+      say("Photo removed.");
+    } catch (error) {
+      say(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  saved.querySelectorAll("[data-photo-remove]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const clip = button.closest("[data-photo-clip]");
+      removeSaved(button.dataset.photoRemove, clip);
+    });
+  });
+  gallery.addEventListener("change", () => {
+    Array.from(gallery.files || []).forEach(addFile);
+    gallery.value = "";
+  });
+  camera.addEventListener("change", () => {
+    if (camera.files[0]) addFile(camera.files[0]);
+    camera.value = "";
+  });
+  upload.addEventListener("click", async () => {
+    const files = selected.slice();
+    if (!files.length || working) return;
+    for (let index = 0; index < files.length; index += 1) {
+      setBusy(true, `Processing photo ${index + 1} of ${files.length}…`);
+      try {
+        const savedPhoto = await send(files[index]);
+        addSaved(savedPhoto);
+        const at = selected.indexOf(files[index]);
+        if (at >= 0) selected.splice(at, 1);
+        sync();
+      } catch (error) {
+        say(error.message);
+        setBusy(false);
+        return;
+      }
+    }
+    setBusy(false);
+    say(files.length === 1 ? "Photo uploaded." : `${files.length} photos uploaded.`);
+  });
+  const form = box.closest("form");
+  if (form) {
+    form.addEventListener("submit", (event) => {
+      if (working) {
+        event.preventDefault();
+        say("Wait until the photo finishes processing.");
+        return;
+      }
+      if (selected.length) {
+        event.preventDefault();
+        say("Press Upload photo first. Saving the card does not send the photo.");
+      }
+    });
+  }
+}
 
 function bindQcVideoBox(box) {
   const preview = box.querySelector("[data-video-preview]");
@@ -357,7 +614,7 @@ function bindQcVideoBox(box) {
       }
       if (selected.length) {
         event.preventDefault();
-        say("Press Upload video first. The save button stores the QC card, not the video.");
+        say("Press Upload video first. Saving the card does not send the video.");
       }
     });
   }

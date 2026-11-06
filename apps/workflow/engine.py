@@ -349,7 +349,7 @@ def production_release(machine, user, station, production_serial="", remarks="")
         return machine
 
 
-def _job_card(machine, user, phase_code, answers, files, remarks, corrective_action, as_draft, approving=False):
+def _job_card(machine, user, phase_code, answers, files, remarks, corrective_action, as_draft, approving=False, require_all=False, skip_required=False):
     if phase_code not in PhaseCode.JOB_CARDS:
         raise WorkflowError("This phase does not use a digital job card.")
     if phase_code == PhaseCode.QC and not as_draft and not approving:
@@ -373,6 +373,8 @@ def _job_card(machine, user, phase_code, answers, files, remarks, corrective_act
                 status="DRAFT" if as_draft else "SUBMITTED",
                 remarks=remarks,
                 corrective_action=corrective_action,
+                require_all=require_all,
+                skip_required=skip_required,
             )
         except JobCardError:
             raise
@@ -387,9 +389,9 @@ def _job_card(machine, user, phase_code, answers, files, remarks, corrective_act
         return machine, submission
 
 
-def save_job_card_draft(machine, user, phase_code, answers, files=None, remarks=""):
+def save_job_card_draft(machine, user, phase_code, answers, files=None, remarks="", require_all=False, skip_required=False):
     machine, _submission = _job_card(
-        machine, user, phase_code, answers, files, remarks, "", as_draft=True
+        machine, user, phase_code, answers, files, remarks, "", as_draft=True, require_all=require_all, skip_required=skip_required
     )
     return machine
 
@@ -439,22 +441,30 @@ def pass_phase(machine, user, phase_code):
             production_serial=machine.production_serial or "",
             remarks=machine.production_remarks or "",
         )
+    management = getattr(user, "is_management", False)
     if phase_code == PhaseCode.QC:
-        return approve_qc(machine, user, {}, remarks="Approved and released.")
+        return approve_qc(machine, user, {}, remarks="Approved and released.", require_all=not management, skip_required=management)
     if phase_code not in PhaseCode.JOB_CARDS:
         raise WorkflowError("That phase cannot be passed from here.")
     phase = _phase(phase_code)
     state = machine.phase_states.filter(phase=phase).first()
     if state is None or state.status != PhaseStatus.IN_PROGRESS:
         raise WorkflowError(f"{phase.name} is not open on this machine.")
+    if phase_code == PhaseCode.TESTING and not management and not (machine.test_area or "").strip():
+        raise WorkflowError("Select Test area 1, Test area 2, or Test area 3 before moving this machine on.")
     answers = _draft_answers(machine, phase_code, state.cycle)
-    if phase_code == PhaseCode.TESTING and not str(answers.get("test_result") or "").strip():
+    if not management and phase_code == PhaseCode.TESTING and not str(answers.get("test_result") or "").strip():
         raise WorkflowError("Open the testing card and mark OK or NOT OK before moving on.")
-    submit_job_card(machine, user, phase_code, answers)
+    try:
+        submit_job_card(machine, user, phase_code, answers, require_all=not management, skip_required=management)
+    except JobCardError as exc:
+        if not management and exc.field_errors:
+            raise WorkflowError("Open the job card and fill every field. Missing fields are marked in red.") from exc
+        raise
     return machine
 
 
-def submit_job_card(machine, user, phase_code, answers, files=None, remarks="", corrective_action=""):
+def submit_job_card(machine, user, phase_code, answers, files=None, remarks="", corrective_action="", require_all=False, skip_required=False):
     machine, _submission = _job_card(
         machine,
         user,
@@ -464,11 +474,13 @@ def submit_job_card(machine, user, phase_code, answers, files=None, remarks="", 
         remarks,
         corrective_action,
         as_draft=False,
+        require_all=require_all,
+        skip_required=skip_required,
     )
     return machine
 
 
-def approve_qc(machine, user, answers, files=None, remarks=""):
+def approve_qc(machine, user, answers, files=None, remarks="", require_all=False, skip_required=False):
     _require_operator(user, PhaseCode.QC)
     with transaction.atomic():
         machine = _lock(machine)
@@ -484,6 +496,8 @@ def approve_qc(machine, user, answers, files=None, remarks=""):
             files=files,
             status="SUBMITTED",
             remarks=remarks,
+            require_all=require_all,
+            skip_required=skip_required,
         )
         _complete(machine, phase, user, remarks=remarks or "QC approved.")
         now = timezone.now()
@@ -513,7 +527,7 @@ def approve_qc(machine, user, answers, files=None, remarks=""):
         return machine
 
 
-def update_finished_qc(machine, user, answers, files=None, remarks=""):
+def update_finished_qc(machine, user, answers, files=None, remarks="", require_all=False, skip_required=False):
     """Change a completed QC card. The machine stays completed."""
     _require_operator(user, PhaseCode.QC)
     phase = _phase(PhaseCode.QC)
@@ -544,6 +558,8 @@ def update_finished_qc(machine, user, answers, files=None, remarks=""):
         template=qc_card_template(submission),
         allow_existing=True,
         replace=submission,
+        require_all=require_all,
+        skip_required=skip_required,
     )
     log_audit(user, "qc.edit", instance=machine, changes={"submission": submission.pk})
     return machine

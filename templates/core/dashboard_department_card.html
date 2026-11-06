@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% load mqms %}
+{% block title %}{{ card.label }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="crumbs"><a href="{% url 'core:dashboard' %}{% if machine_type %}?type={{ machine_type }}{% endif %}">Dashboard</a> / {{ card.label }}</p>
+    <h1>{{ card.label }}</h1>
+    <p class="muted">{{ phase.name }} · {{ count }} machine{{ count|pluralize }}. {{ card.note }} Open a row to see that machine and its record.</p>
+  </div>
+</div>
+{% include "includes/type_filter.html" %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Machine</th>
+        <th>Work order</th>
+        <th>Model</th>
+        <th>Serial</th>
+        <th>Station</th>
+        <th>Priority</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for machine in machines %}
+        <tr>
+          <td data-label="Machine"><a class="machine-link" href="{% url 'machines:detail' machine.machine_id %}">{{ machine.machine_id }}</a></td>
+          <td data-label="Work order">{{ machine.planning.work_order }}</td>
+          <td data-label="Model">{{ machine.planning.model_description }}</td>
+          <td data-label="Serial">{{ machine.planner_serial|default:"—" }}</td>
+          <td data-label="Station">{{ machine.station|default:"—" }}</td>
+          <td data-label="Priority"><span class="{{ machine.priority|badge_class }}">{{ machine.priority_label }}</span></td>
+          <td data-label="Status"><span class="{{ machine.status|badge_class }}">{{ machine.status_label }}</span></td>
+          <td data-label=""><a class="btn-primary" href="{% url 'machines:detail' machine.machine_id %}">Open record</a></td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8" class="empty">No machines in this group.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

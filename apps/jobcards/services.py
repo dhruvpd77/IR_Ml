@@ -10,15 +10,18 @@ from PIL import Image, UnidentifiedImageError
 from audit.utils import log_audit
 from core.constants import EventType, FieldType
 from jobcards.models import JobCardResponse, JobCardSubmission, JobCardTemplate, MachineAttachment
+from jobcards.images import compress_image
 from jobcards.video import compress_video
 
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp"}
 VIDEO_EXT = {".mp4", ".webm", ".mov", ".m4v"}
 DOC_EXT = IMAGE_EXT | {".pdf", ".xlsx", ".xls", ".docx", ".txt", ".csv"}
-MAX_IMAGE = 8 * 1024 * 1024
+MAX_IMAGE = 20 * 1024 * 1024
+MAX_PHOTOS = 8
 MAX_VIDEO = 200 * 1024 * 1024
 MAX_DOC = 15 * 1024 * 1024
 MAX_VIDEOS = 8
+MISSING = "This field is missing."
 PASS_VALUES = {"Pass", "Fail", "N/A"}
 YES_VALUES = {"Yes", "No"}
 
@@ -104,7 +107,7 @@ def _validate_upload(field, upload):
         if ext not in IMAGE_EXT:
             return "Upload a JPG, PNG, or WEBP image."
         if size > MAX_IMAGE:
-            return "Images must be 8 MB or smaller."
+            return "Each photo must be 20 MB or smaller."
         try:
             upload.seek(0)
             image = Image.open(upload)
@@ -170,10 +173,11 @@ def _qc_submission(machine):
 
 
 def qc_card_template(submission):
-    """Use the current QC card when an older submission has no video field."""
-    if submission is not None and submission.template.fields.filter(field_key="qc_video", is_active=True).exists():
-        return submission.template
-    return active_template("QC")
+    """Use the current QC card, which stores photos rather than video."""
+    current = active_template("QC")
+    if current is not None and current.fields.filter(field_key="qc_photo", is_active=True).exists():
+        return current
+    return submission.template if submission is not None else current
 
 
 def _qc_video_field(submission):
@@ -230,6 +234,147 @@ def remove_qc_video(machine, user, attachment_id):
         log_audit(user, "qc.video.remove", instance=machine, changes={"attachment": attachment_id})
 
 
+def _phase_submission(machine, phase_code, closed_message):
+    from workflow.models import ProductionPhase
+
+    phase = ProductionPhase.objects.filter(code=phase_code).first()
+    state = machine.phase_states.filter(phase=phase).first() if phase else None
+    if state is None:
+        raise JobCardError(f"{phase_code} is not on this machine.")
+    if state.status == "IN_PROGRESS":
+        submission = (
+            JobCardSubmission.objects.filter(
+                machine=machine,
+                phase_code=phase_code,
+                cycle=state.cycle,
+                status=JobCardSubmission.Status.DRAFT,
+            )
+            .order_by("-pk")
+            .first()
+        )
+        if submission is None:
+            submission = JobCardSubmission.objects.create(
+                machine=machine,
+                template=active_template(phase_code),
+                phase_code=phase_code,
+                cycle=state.cycle,
+                status=JobCardSubmission.Status.DRAFT,
+            )
+        return submission
+    if state.status == "COMPLETED" and phase_code == "QC" and machine.status == "COMPLETED":
+        submission = (
+            JobCardSubmission.objects.filter(
+                machine=machine,
+                phase_code=phase_code,
+                cycle=state.cycle,
+                status=JobCardSubmission.Status.SUBMITTED,
+            )
+            .order_by("-revision", "-pk")
+            .first()
+        )
+        if submission is None:
+            raise JobCardError(closed_message)
+        return submission
+    raise JobCardError(closed_message)
+
+
+def _phase_field(submission, field_key, missing_message):
+    field = submission.template.fields.filter(field_key=field_key, is_active=True).first()
+    if field is not None:
+        return field
+    current = active_template(submission.phase_code)
+    field = current.fields.filter(field_key=field_key, is_active=True).first() if current else None
+    if field is None:
+        raise JobCardError(missing_message)
+    submission.template = current
+    submission.save(update_fields=["template"])
+    return field
+
+
+def attach_testing_video(machine, user, upload):
+    if upload is None or not (getattr(upload, "size", 0) or 0):
+        raise JobCardError("Choose a video first.")
+    if (getattr(upload, "size", 0) or 0) > MAX_VIDEO:
+        raise JobCardError("Each video must be 200 MB or smaller.")
+    with transaction.atomic():
+        submission = _phase_submission(machine, "TESTING", "Testing is not open for a video.")
+        field = _phase_field(submission, "testing_video", "This testing card has no video field.")
+        response = submission.responses.filter(field=field).first()
+        if response is None:
+            response = JobCardResponse.objects.create(submission=submission, field=field, value_text="Video attached")
+        if response.attachments.count() >= MAX_VIDEOS:
+            raise JobCardError(f"Attach up to {MAX_VIDEOS} videos.")
+        prepared = compress_video(upload)
+        error = _validate_upload(field, prepared)
+        if error:
+            raise JobCardError(error)
+        stored = _store_upload(machine, submission, response, field, prepared, user)
+        if response.value_text != "Video attached":
+            response.value_text = "Video attached"
+            response.save(update_fields=["value_text"])
+        log_audit(user, "testing.video", instance=machine, changes={"attachment": stored.pk})
+        return stored
+
+
+def remove_testing_video(machine, user, attachment_id):
+    with transaction.atomic():
+        submission = _phase_submission(machine, "TESTING", "Testing is not open for a video.")
+        attachment = MachineAttachment.objects.filter(
+            pk=attachment_id,
+            machine=machine,
+            submission=submission,
+            kind=MachineAttachment.Kind.VIDEO,
+        ).first()
+        if attachment is None:
+            raise JobCardError("That video is not on this testing record.")
+        if attachment.file:
+            attachment.file.delete(save=False)
+        attachment.delete()
+        log_audit(user, "testing.video.remove", instance=machine, changes={"attachment": attachment_id})
+
+
+def attach_qc_photo(machine, user, upload):
+    if upload is None or not (getattr(upload, "size", 0) or 0):
+        raise JobCardError("Choose a photo first.")
+    if (getattr(upload, "size", 0) or 0) > MAX_IMAGE:
+        raise JobCardError("Each photo must be 20 MB or smaller.")
+    with transaction.atomic():
+        submission = _phase_submission(machine, "QC", "There is no QC record to add a photo to.")
+        field = _phase_field(submission, "qc_photo", "This QC card has no photo field.")
+        response = submission.responses.filter(field=field).first()
+        if response is None:
+            response = JobCardResponse.objects.create(submission=submission, field=field, value_text="Photo attached")
+        if response.attachments.count() >= MAX_PHOTOS:
+            raise JobCardError(f"Attach up to {MAX_PHOTOS} photos.")
+        prepared = compress_image(upload)
+        error = _validate_upload(field, prepared)
+        if error:
+            raise JobCardError(error)
+        stored = _store_upload(machine, submission, response, field, prepared, user)
+        if response.value_text != "Photo attached":
+            response.value_text = "Photo attached"
+            response.save(update_fields=["value_text"])
+        log_audit(user, "qc.photo", instance=machine, changes={"attachment": stored.pk})
+        return stored
+
+
+def remove_qc_photo(machine, user, attachment_id):
+    with transaction.atomic():
+        submission = _phase_submission(machine, "QC", "There is no QC record to change.")
+        attachment = MachineAttachment.objects.filter(
+            pk=attachment_id,
+            machine=machine,
+            submission=submission,
+            kind=MachineAttachment.Kind.IMAGE,
+        ).first()
+        if attachment is None:
+            raise JobCardError("That photo is not on this QC record.")
+        if attachment.file:
+            attachment.file.delete(save=False)
+        attachment.delete()
+        log_audit(user, "qc.photo.remove", instance=machine, changes={"attachment": attachment_id})
+
+
 def _store_upload(machine, submission, response, field, upload, user):
     return MachineAttachment.objects.create(
         machine=machine,
@@ -273,9 +418,18 @@ def persist_submission(
     template=None,
     allow_existing=False,
     replace=None,
+    require_all=False,
+    skip_required=False,
 ):
     files = files or {}
     answers = answers or {}
+    def must_fill(field):
+        conditional = field.section == "If not OK" or field.field_key == "test_problem"
+        if skip_required or (conditional and str(answers.get("test_result") or "") != "NOT OK"):
+            return False
+        if require_all:
+            return True
+        return strict and field.required
     template = template or (replace.template if replace is not None else None) or (
         supersedes.template if supersedes else active_template(phase_code)
     )
@@ -327,11 +481,13 @@ def persist_submission(
                         break
             if field.field_key not in errors and len(compressed) + len(kept) > MAX_VIDEOS:
                 errors[field.field_key] = f"Attach up to {MAX_VIDEOS} videos."
-            elif field.field_key not in errors and strict and field.required and not compressed and not kept:
-                errors[field.field_key] = "This file is required."
+            elif field.field_key not in errors and must_fill(field) and not compressed and not kept:
+                errors[field.field_key] = MISSING
             prepared[field.field_key] = (field, {}, compressed, kept)
             continue
         if field.field_type in FieldType.FILE_TYPES:
+            if upload and field.field_type == FieldType.IMAGE:
+                upload = compress_image(upload)
             uploads = [upload] if upload else []
             kept = previous_files.get(field.field_key, []) if not upload else []
             if upload:
@@ -339,8 +495,8 @@ def persist_submission(
                 if upload_error:
                     errors[field.field_key] = upload_error
                     continue
-            elif strict and field.required and not kept:
-                errors[field.field_key] = "This file is required."
+            elif must_fill(field) and not kept:
+                errors[field.field_key] = MISSING
             prepared[field.field_key] = (field, {}, uploads, kept)
             continue
         if upload:
@@ -348,7 +504,7 @@ def persist_submission(
             if upload_error:
                 errors[field.field_key] = upload_error
                 continue
-        value = _prepare_value(field, raw, upload, strict, errors)
+        value = _prepare_value(field, raw, upload, must_fill, errors)
         prepared[field.field_key] = (field, value, [], [])
 
     if errors:
@@ -414,40 +570,40 @@ def persist_submission(
         return submission
 
 
-def _prepare_value(field, raw, upload, strict, errors):
+def _prepare_value(field, raw, upload, must_fill, errors):
     ftype = field.field_type
     if ftype in FieldType.FILE_TYPES:
-        if strict and field.required and not upload:
-            errors[field.field_key] = "This file is required."
+        if must_fill(field) and not upload:
+            errors[field.field_key] = MISSING
         return {}
     if ftype == FieldType.SIGNATURE:
         data = raw if isinstance(raw, dict) else {"name": raw or "", "confirmed": False}
         name = str(data.get("name") or "").strip()
         confirmed = bool(data.get("confirmed"))
-        if strict and field.required and (not name or not confirmed):
-            errors[field.field_key] = "Type your name and confirm the job card."
+        if must_fill(field) and (not name or not confirmed):
+            errors[field.field_key] = MISSING
         if _empty(name) and not confirmed:
             return None
         return {"value_text": name, "value_bool": confirmed}
     if ftype == FieldType.CHECKBOX and field.options:
         selected = raw if isinstance(raw, list) else ([] if _empty(raw) else [raw])
         selected = [str(item) for item in selected if str(item) in field.options]
-        if strict and field.required and not selected:
-            errors[field.field_key] = "Select at least one option."
+        if must_fill(field) and not selected:
+            errors[field.field_key] = MISSING
         if not selected:
             return None
         return {"value_json": selected, "value_text": ", ".join(selected)}
     if ftype == FieldType.CHECKBOX:
         checked = raw is True or raw == "on" or raw == "Yes"
-        if strict and field.required and not checked:
-            errors[field.field_key] = "This confirmation is required."
+        if must_fill(field) and not checked:
+            errors[field.field_key] = MISSING
         return {"value_bool": checked, "value_text": "Yes" if checked else "No"}
     if ftype == FieldType.PASS_FAIL:
         value = str(raw or "").strip()
         if value and value not in PASS_VALUES:
             errors[field.field_key] = "Choose Pass, Fail, or N/A."
-        if strict and field.required and not value:
-            errors[field.field_key] = "Choose Pass, Fail, or N/A."
+        if must_fill(field) and not value:
+            errors[field.field_key] = MISSING
         if not value:
             return None
         return {"value_text": value}
@@ -455,8 +611,8 @@ def _prepare_value(field, raw, upload, strict, errors):
         value = str(raw or "").strip()
         if value and value not in YES_VALUES:
             errors[field.field_key] = "Choose Yes or No."
-        if strict and field.required and not value:
-            errors[field.field_key] = "Choose Yes or No."
+        if must_fill(field) and not value:
+            errors[field.field_key] = MISSING
         if not value:
             return None
         return {"value_text": value, "value_bool": value == "Yes"}
@@ -464,15 +620,15 @@ def _prepare_value(field, raw, upload, strict, errors):
         value = str(raw or "").strip()
         if value and field.options and value not in field.options:
             errors[field.field_key] = "Choose one of the listed options."
-        if strict and field.required and not value:
-            errors[field.field_key] = "This field is required."
+        if must_fill(field) and not value:
+            errors[field.field_key] = MISSING
         if not value:
             return None
         return {"value_text": value}
     if ftype in {FieldType.MEASUREMENT, FieldType.DECIMAL, FieldType.INTEGER}:
         if _empty(raw):
-            if strict and field.required:
-                errors[field.field_key] = "Enter a value."
+            if must_fill(field):
+                errors[field.field_key] = MISSING
             return None
         number = _decimal(raw)
         if number is None:
@@ -485,8 +641,8 @@ def _prepare_value(field, raw, upload, strict, errors):
         return {"value_decimal": number.quantize(Decimal("0.0001")), "value_text": text}
     if ftype == FieldType.DATE:
         if _empty(raw):
-            if strict and field.required:
-                errors[field.field_key] = "Enter a date."
+            if must_fill(field):
+                errors[field.field_key] = MISSING
             return None
         try:
             parsed = datetime.strptime(str(raw).strip(), "%Y-%m-%d").date()
@@ -496,8 +652,8 @@ def _prepare_value(field, raw, upload, strict, errors):
         return {"value_date": parsed, "value_text": parsed.isoformat()}
     if ftype == FieldType.TIME:
         if _empty(raw):
-            if strict and field.required:
-                errors[field.field_key] = "Enter a time."
+            if must_fill(field):
+                errors[field.field_key] = MISSING
             return None
         text = str(raw).strip()
         parsed = None
@@ -512,8 +668,8 @@ def _prepare_value(field, raw, upload, strict, errors):
             return None
         return {"value_time": parsed, "value_text": parsed.strftime("%H:%M")}
     text = "" if raw is None else str(raw).strip()
-    if strict and field.required and not text:
-        errors[field.field_key] = "This field is required."
+    if must_fill(field) and not text:
+        errors[field.field_key] = MISSING
         return None
     if not text:
         return None
@@ -546,7 +702,7 @@ def submission_form_state(submission):
         clips = list(response.attachments.order_by("pk"))
         if not clips:
             continue
-        files[key] = clips if ftype == FieldType.VIDEO else clips[0]
+        files[key] = clips if ftype in {FieldType.VIDEO, FieldType.IMAGE} else clips[0]
     return values, files
 
 

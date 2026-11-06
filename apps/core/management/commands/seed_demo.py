@@ -26,9 +26,6 @@ PEOPLE = [
     ("planning1", Roles.PLANNING_DATA_ENTRY, "Neha", "Kapoor"),
     ("planning2", Roles.PLANNING_DATA_ENTRY, "Vikram", "Shah"),
     ("planner1", Roles.PRODUCTION_LEADER, "Anita", "Desai"),
-    ("planner2", Roles.PRODUCTION_LEADER, "Karan", "Mehta"),
-    ("leader1", Roles.PRODUCTION_LEADER, "Sanjay", "Rao"),
-    ("leader2", Roles.PRODUCTION_LEADER, "Pooja", "Nair"),
     ("assembly1", Roles.ASSEMBLY, "Imran", "Qureshi"),
     ("assembly2", Roles.ASSEMBLY, "Lakshmi", "Reddy"),
     ("electrical1", Roles.ELECTRICAL, "Arun", "Pillai"),
@@ -124,7 +121,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("MQMS demo data is ready."))
         self.stdout.write(f"Password for every demo account: {PASSWORD}")
         self.stdout.write("Super admin: superadmin    Admin: admin")
-        self.stdout.write("Two users exist for every phase, for example assembly1 and assembly2.")
+        self.stdout.write("planner1 assigns the serial number and the station. Other phases have two users, for example assembly1 and assembly2.")
 
     def _machines(self, users):
         stations = list(ProductionStation.objects.filter(is_active=True).order_by("code"))
@@ -158,6 +155,7 @@ class Command(BaseCommand):
                     "model_description": model,
                     "machine_type": kind,
                     "calibration": "Standard",
+                    "shift": "1st shift" if index % 2 else "2nd shift",
                     "test_report_bar": "7 Bar" if index % 2 == 0 else "8.5 Bar",
                     "export_packing_required": "Yes" if index % 3 == 0 else "No",
                     "customer_inspection": "Yes" if index % 4 == 0 else "No",
@@ -186,7 +184,7 @@ class Command(BaseCommand):
         planner_release(machine, users["planner1"], f"SN-26{index:04d}")
         if level == "production":
             return
-        production_release(machine, users["leader1"], station, production_serial=f"PR-26{index:04d}", remarks="Released to the build bays.")
+        production_release(machine, users["planner1"], station, production_serial=f"PR-26{index:04d}", remarks="Released to the build bays.")
         if level == "build":
             return
         submit_job_card(machine, users["assembly1"], "ASSEMBLY", sample_answers(users["assembly1"], "ASSEMBLY"), remarks="Assembly complete.")

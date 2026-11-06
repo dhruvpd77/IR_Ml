@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% load mqms %}
-{% block title %}Dashboard{% endblock %}
+{% block title %}{{ dashboard_title }}{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
     <p class="eyebrow">{{ company_name }}</p>
-    <h1>Production control</h1>
-    <p class="muted">Planning, production, the line, testing, end of line, quality and completed add up to the total.</p>
+    <h1>{{ dashboard_title }}</h1>
+    <p class="muted">{{ dashboard_blurb }}</p>
   </div>
   <div class="btn-row">
     {% include "includes/fullscreen.html" %}
@@ -14,14 +14,39 @@
     <a class="btn-primary" href="{% url 'machines:list' %}">All machines</a>
   </div>
 </div>
+<form class="dash-filters" method="get">
+  {% if machine_type %}<input type="hidden" name="type" value="{{ machine_type }}">{% endif %}
+  {% if mode == "daily" %}
+    <label>Date
+      <input type="date" name="date" value="{{ selected_date }}" onchange="this.form.submit()">
+    </label>
+    <label>Shift
+      <select name="shift" onchange="this.form.submit()">
+        <option value="">All shifts</option>
+        {% for code, label in shifts %}
+          <option value="{{ code }}" {% if selected_shift == code %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  {% else %}
+    <label>Month
+      <select name="month" onchange="this.form.submit()">
+        {% for item in months %}
+          <option value="{{ item.value }}" {% if selected_month == item.value %}selected{% endif %}>{{ item.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  {% endif %}
+</form>
+{% include "includes/type_filter.html" %}
 <section class="stat-grid">
   {% for card in stats.cards %}
-    <a class="stat tone-{{ card.tone }}" href="{% url 'core:dashboard_card' card.key %}">
+    {% if card.href %}<a class="stat tone-{{ card.tone }}" href="{{ card.href }}">{% else %}<article class="stat tone-{{ card.tone }}">{% endif %}
       <span class="stat-mark" data-lucide="{{ card.icon }}"></span>
       <span>{{ card.label }}</span>
       <strong>{{ card.value }}</strong>
       <em>{{ card.note|default:"View machines" }}</em>
-    </a>
+    {% if card.href %}</a>{% else %}</article>{% endif %}
   {% endfor %}
 </section>
 <section class="chart-grid">

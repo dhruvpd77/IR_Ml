@@ -1,66 +1,103 @@
 {% extends "base.html" %}
 {% block title %}Machine analytics{% endblock %}
 {% block content %}
-<div class="page-head">
-  <div>
-    <p class="eyebrow">Shop floor</p>
-    <h1>Machine analytics</h1>
-    <p class="muted">{{ on_floor }} machine{{ on_floor|pluralize }} on the floor{% if waiting %} · {{ waiting }} not allocated yet{% endif %}. A blinking symbol means that phase is open on the station right now.</p>
-  </div>
+<div class="page-head floor-headbar">
+  <h1>Machine analytics</h1>
   {% include "includes/fullscreen.html" %}
 </div>
+<form class="dash-filters floor-filters" method="get">
+  <label>Month
+    <select name="month" onchange="this.form.date.value=''; this.form.submit()">
+      <option value="">All months</option>
+      {% for item in months %}
+        <option value="{{ item.value }}" {% if selected_month == item.value %}selected{% endif %}>{{ item.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Date
+    <input type="date" name="date" value="{{ selected_date }}" onchange="this.form.month.value=''; this.form.submit()">
+  </label>
+  <label>Shift
+    <select name="shift" onchange="this.form.submit()">
+      <option value="">All shifts</option>
+      {% for code, label in shifts %}
+        <option value="{{ code }}" {% if selected_shift == code %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+</form>
 <div class="legend">
   {% for item in legend %}
-    <span class="legend-item"><i class="shape shape-{{ item.shape }} {% if item.code != 'COMPLETED' and item.code != 'WAIT' %}shape-live{% endif %}" style="--c: {{ item.color }}"></i>{{ item.label }}</span>
+    <span class="legend-item"><i class="live-dot" style="--c: {{ item.color }}"></i>{{ item.label }}</span>
   {% endfor %}
+  <span class="heat-scale"><i class="heat-swatch heat-0"></i>Empty <i class="heat-swatch heat-1"></i>1 <i class="heat-swatch heat-2"></i>2 <i class="heat-swatch heat-3"></i>3–4 <i class="heat-swatch heat-4"></i>5+</span>
 </div>
-<div class="floor">
-  {% for line in lines %}
-    <section class="floor-col floor-{{ line.tone }}">
-      <header class="floor-head">
-        <div>
-          <strong>{{ line.label }}</strong>
-          <span>{{ line.subtitle }}</span>
-        </div>
-        <b>{{ line.count }}</b>
-      </header>
-      {% for box in line.boxes %}
-        {% if not forloop.first %}<div class="floor-flow" aria-hidden="true"></div>{% endif %}
-        <article class="station-box kind-{{ box.station.kind|lower }}">
-          <div class="station-head">
-            <div>
-              <strong>{{ box.station.name }}</strong>
-              <span>{{ box.station.kind_label }}</span>
-            </div>
-            <b>{{ box.count }}</b>
+<div class="shop">
+  <section class="shop-band">
+    <header class="band-head band-assembly">
+      <p>Assembly area</p>
+      <b>{{ assembly_count }}</b>
+    </header>
+    <div class="assembly-lanes">
+      {% for line in lines %}
+        <div class="plan-lane">
+          <div class="lane-name lane-{{ line.tone }}">
+            <strong>{{ line.label }}</strong>
           </div>
-          {% if box.tally %}
-            <div class="station-tally">
-              {% for item in box.tally %}
-                <span><i class="shape shape-{{ item.shape }} {% if item.live %}shape-live{% endif %}" style="--c: {{ item.color }}"></i>{{ item.count }} {{ item.label }}</span>
-              {% endfor %}
-            </div>
-          {% endif %}
-          {% if box.machines %}
-            <div class="heat">
-              {% for machine in box.machines %}
-                <a class="status-card {% if machine.live %}is-live{% endif %}" href="{% url 'machines:detail' machine.id %}" title="{{ machine.caption }}" aria-label="{{ machine.caption }}">
-                  <span class="status-icons">
-                    {% for mark in machine.marks %}
-                      <i class="shape shape-{{ mark.shape }} {% if mark.live %}shape-live{% endif %}" style="--c: {{ mark.color }}"></i>
-                    {% endfor %}
-                  </span>
-                  <strong>{{ machine.phase_label }}</strong>
-                  <small>{{ machine.id }}</small>
-                </a>
-              {% endfor %}
-            </div>
-          {% else %}
-            <p class="station-empty">No machine</p>
-          {% endif %}
+          <div class="lane-squares">
+            {% for box in line.boxes %}
+              <article class="station-square heat-{{ box.heat }}">
+                <div class="cell-top">
+                  <strong class="cell-name">{{ box.station.name }}</strong>
+                  <b>{{ box.count }}</b>
+                </div>
+                <div class="dot-board">
+                  {% for machine in box.machines %}
+                    {% include "includes/floor_machine.html" %}
+                  {% endfor %}
+                </div>
+              </article>
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="shop-band">
+    <header class="band-head band-testing">
+      <p>Testing area</p>
+      <b>{{ testing_count }}</b>
+    </header>
+    <div class="test-row">
+      {% for area in test_areas %}
+        <article class="test-rect {{ area.tone }} heat-{{ area.heat }}">
+          <div class="cell-top">
+            <strong class="cell-name">Testing area {{ forloop.counter }}</strong>
+            <b>{{ area.count }}</b>
+          </div>
+          <div class="dot-board">
+            {% for machine in area.machines %}
+              {% include "includes/floor_machine.html" %}
+            {% endfor %}
+          </div>
         </article>
       {% endfor %}
-    </section>
-  {% endfor %}
+    </div>
+  </section>
+
+  <section class="shop-band">
+    <header class="band-head band-eol">
+      <p>EOL</p>
+      <b>{{ eol_count }}</b>
+    </header>
+    <article class="eol-rect heat-{{ eol_heat }}">
+      <div class="dot-board">
+        {% for machine in eol_machines %}
+          {% include "includes/floor_machine.html" %}
+        {% endfor %}
+      </div>
+    </article>
+  </section>
 </div>
 {% endblock %}

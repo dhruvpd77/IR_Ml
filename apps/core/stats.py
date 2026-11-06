@@ -29,15 +29,18 @@ STAGE_LABELS = {
 }
 CARD_META = {
     "all": {"label": "Total machines", "tone": "navy", "icon": "layers", "limit": None},
+    "registered": {"label": "Registered", "tone": "blue", "icon": "clipboard-plus", "limit": None},
+    "tentative": {"label": "Tentative planned machines", "tone": "navy", "icon": "calendar-range", "limit": None},
+    "balance": {"label": "Yet to register", "tone": "amber", "icon": "circle-minus", "limit": None},
     "today": {"label": "Registered today", "tone": "blue", "icon": "calendar-plus", "limit": PhaseCode.PLANNING},
     "planning": {"label": "Planning and serial", "tone": "slate", "icon": "clipboard-list", "limit": PhaseCode.PLANNER},
     "production": {"label": "With production", "tone": "blue", "icon": "map-pin", "limit": PhaseCode.PRODUCTION},
-    "line": {"label": "Assembly and electrical", "tone": "amber", "icon": "wrench", "limit": PhaseCode.ELECTRICAL},
+    "line": {"label": "Under assembly", "tone": "amber", "icon": "wrench", "limit": PhaseCode.ELECTRICAL},
     "assembly": {"label": "In assembly", "tone": "amber", "icon": "wrench", "limit": PhaseCode.ASSEMBLY},
     "electrical": {"label": "In electrical", "tone": "amber", "icon": "zap", "limit": PhaseCode.ELECTRICAL},
     "testing": {"label": "In testing", "tone": "blue", "icon": "gauge", "limit": PhaseCode.TESTING},
-    "eol": {"label": "In EOL", "tone": "blue", "icon": "package-check", "limit": PhaseCode.EOL},
-    "qc": {"label": "In QC", "tone": "red", "icon": "shield-check", "limit": PhaseCode.QC},
+    "eol": {"label": "EOL under production", "tone": "blue", "icon": "package-check", "limit": PhaseCode.EOL},
+    "qc": {"label": "EOL assigned to Quality", "tone": "red", "icon": "shield-check", "limit": PhaseCode.QC},
     "completed": {"label": "Completed", "tone": "green", "icon": "circle-check", "limit": None},
     "rework-open": {"label": "Open rework", "tone": "red", "icon": "rotate-ccw", "limit": "REWORK"},
     "rework": {"label": "Under rework", "tone": "red", "icon": "rotate-ccw", "limit": "REWORK"},
@@ -54,12 +57,30 @@ def _span_labels(days):
     return [today - timedelta(days=offset) for offset in range(days - 1, -1, -1)]
 
 
-def admin_stats():
-    today = timezone.localdate()
+def scoped_machines(machine_type="", start=None, end=None, on_date=None, shift=""):
     machines = Machine.objects.all()
+    if machine_type:
+        machines = machines.filter(planning__machine_type=machine_type)
+    if on_date is not None:
+        machines = machines.filter(created_at__date=on_date)
+    elif start is not None and end is not None:
+        machines = machines.filter(created_at__gte=start, created_at__lt=end)
+    if shift:
+        machines = machines.filter(planning__shift=shift)
+    return machines
+
+
+def admin_stats(machine_type="", start=None, end=None, on_date=None, shift="", mode="", tentative=0, tentative_set=False):
+    today = timezone.localdate()
+    machines = scoped_machines(machine_type, start=start, end=end, on_date=on_date, shift=shift)
+    machine_ids = machines.values("pk")
+    reworks = ReworkRequest.objects.filter(machine__in=machine_ids)
+    events = WorkflowEvent.objects.filter(machine__in=machine_ids)
+    open_filter = Q(machine_states__status=PhaseStatus.IN_PROGRESS, machine_states__machine__in=machine_ids)
+    done_filter = Q(machine_states__status=PhaseStatus.COMPLETED, machine_states__machine__in=machine_ids)
     phase_rows = ProductionPhase.objects.filter(is_active=True).annotate(
-        open_count=Count("machine_states", filter=Q(machine_states__status=PhaseStatus.IN_PROGRESS)),
-        done_count=Count("machine_states", filter=Q(machine_states__status=PhaseStatus.COMPLETED)),
+        open_count=Count("machine_states", filter=open_filter),
+        done_count=Count("machine_states", filter=done_filter),
     )
     on_line = machines.filter(status=MachineStatus.IN_PRODUCTION)
     assembly_open = on_line.filter(
@@ -68,17 +89,32 @@ def admin_stats():
     electrical_open = on_line.filter(
         phase_states__phase__code=PhaseCode.ELECTRICAL, phase_states__status=PhaseStatus.IN_PROGRESS
     ).distinct().count()
-    cards = [
-        ("all", "Total machines", machines.count(), "navy", "layers", None, ""),
-        ("today", "Registered today", machines.filter(created_at__date=today).count(), "blue", "calendar-plus", PhaseCode.PLANNING, "Already inside the total"),
+    registered = machines.count()
+    balance = tentative - registered
+    if mode == "monthly":
+        lead = [
+            ("tentative", "Tentative planned machines", tentative, "navy", "calendar-range", None, "Entered by Super Admin" if tentative_set else "Not entered yet"),
+            ("registered", "Registered", registered, "blue", "clipboard-plus", None, "Planning team"),
+            ("balance", "Yet to register", balance, "red" if balance < 0 else "amber", "circle-minus", None, "Over the tentative plan" if balance < 0 else "Tentative minus registered"),
+        ]
+    elif mode == "daily":
+        lead = [
+            ("registered", "Registered", registered, "blue", "clipboard-plus", None, "Registered on this date"),
+        ]
+    else:
+        lead = [
+            ("all", "Total machines", registered, "navy", "layers", None, ""),
+            ("today", "Registered today", machines.filter(created_at__date=today).count(), "blue", "calendar-plus", PhaseCode.PLANNING, "Already inside the total"),
+        ]
+    cards = lead + [
         ("planning", "Planning and serial", machines.filter(status__in=[MachineStatus.DRAFT, MachineStatus.WITH_PLANNER]).count(), "slate", "clipboard-list", PhaseCode.PLANNER, ""),
         ("production", "With production", machines.filter(status=MachineStatus.WITH_PRODUCTION).count(), "blue", "map-pin", PhaseCode.PRODUCTION, ""),
-        ("line", "Assembly and electrical", on_line.count(), "amber", "wrench", PhaseCode.ELECTRICAL, f"Assembly open {assembly_open} · Electrical open {electrical_open}"),
+        ("line", "Under assembly", on_line.count(), "amber", "wrench", PhaseCode.ELECTRICAL, f"Assembly open {assembly_open} · Electrical open {electrical_open}"),
         ("testing", "In testing", machines.filter(status=MachineStatus.IN_TESTING).count(), "blue", "gauge", PhaseCode.TESTING, ""),
-        ("eol", "In EOL", machines.filter(status=MachineStatus.IN_EOL).count(), "blue", "package-check", PhaseCode.EOL, ""),
-        ("qc", "In QC", machines.filter(status=MachineStatus.IN_QC).count(), "red", "shield-check", PhaseCode.QC, ""),
+        ("eol", "EOL under production", machines.filter(status=MachineStatus.IN_EOL).count(), "blue", "package-check", PhaseCode.EOL, ""),
+        ("qc", "EOL assigned to Quality", machines.filter(status=MachineStatus.IN_QC).count(), "red", "shield-check", PhaseCode.QC, ""),
         ("completed", "Completed", machines.filter(status=MachineStatus.COMPLETED).count(), "green", "circle-check", None, ""),
-        ("rework-open", "Open rework", ReworkRequest.objects.filter(status=ReworkRequest.Status.OPEN).count(), "red", "rotate-ccw", "REWORK", "Already inside the total"),
+        ("rework-open", "Open rework", reworks.filter(status=ReworkRequest.Status.OPEN).count(), "red", "rotate-ccw", "REWORK", "Already inside the total"),
         ("rework", "Under rework", machines.filter(is_under_rework=True).exclude(status=MachineStatus.COMPLETED).count(), "red", "rotate-ccw", "REWORK", "Already inside the total"),
     ]
     days = _span_labels(14)
@@ -90,11 +126,11 @@ def admin_stats():
     priority = {row["priority"]: row["total"] for row in machines.values("priority").annotate(total=Count("id"))}
     rework = [
         {"name": row["assigned_phase__name"] or "Unassigned", "total": row["total"]}
-        for row in ReworkRequest.objects.values("assigned_phase__name").annotate(total=Count("id")).order_by("-total")
+        for row in reworks.values("assigned_phase__name").annotate(total=Count("id")).order_by("-total")
     ]
     performance = [
         {"name": row["phase__name"] or "Phase", "total": row["total"]}
-        for row in WorkflowEvent.objects.filter(event_type="PHASE_COMPLETED")
+        for row in events.filter(event_type="PHASE_COMPLETED")
         .values("phase__name")
         .annotate(total=Count("id"))
         .order_by("-total")
@@ -163,10 +199,10 @@ def card_catalog():
     return CARD_META
 
 
-def machines_for_card(key):
+def machines_for_card(key, machine_type="", start=None, end=None, on_date=None, shift=""):
     today = timezone.localdate()
-    machines = Machine.objects.select_related("planning", "station")
-    if key == "all":
+    machines = scoped_machines(machine_type, start=start, end=end, on_date=on_date, shift=shift).select_related("planning", "station")
+    if key in {"all", "registered"}:
         return machines.order_by("machine_id")
     if key == "today":
         return machines.filter(created_at__date=today).order_by("machine_id")
@@ -212,8 +248,16 @@ def limit_for_card(card, machine):
     return phases_until(limit) if limit else None
 
 
-def department_stats(phase_code):
-    base = MachinePhaseState.objects.filter(phase__code=phase_code)
+DEPARTMENT_CARDS = (
+    ("assigned", "Reached this phase", "violet", "layers", "Every machine that has reached this phase."),
+    ("awaiting", "Awaiting action", "amber", "clock", "Waiting for a job card. No draft has been saved."),
+    ("drafts", "Draft job cards", "blue", "pencil", "A draft is saved and has not been submitted."),
+    ("rework", "Rework", "red", "rotate-ccw", "Sent back to this phase and still open."),
+    ("submitted", "Submitted", "green", "circle-check", "This phase is already complete."),
+)
+
+
+def _department_states(phase_code):
     from django.db.models import Exists, OuterRef
 
     drafts = JobCardSubmission.objects.filter(
@@ -222,15 +266,44 @@ def department_stats(phase_code):
         cycle=OuterRef("cycle"),
         status=JobCardSubmission.Status.DRAFT,
     )
-    annotated = base.annotate(has_draft=Exists(drafts))
-    pending = annotated.filter(status=PhaseStatus.IN_PROGRESS, has_draft=False, rework_open=False).count()
-    drafts_count = annotated.filter(status=PhaseStatus.IN_PROGRESS, has_draft=True, rework_open=False).count()
-    rework = annotated.filter(status=PhaseStatus.IN_PROGRESS, rework_open=True).count()
-    submitted = annotated.filter(status=PhaseStatus.COMPLETED).count()
-    return {
-        "awaiting": pending,
-        "drafts": drafts_count,
-        "rework": rework,
-        "submitted": submitted,
-        "assigned": pending + drafts_count + rework + submitted,
-    }
+    return MachinePhaseState.objects.filter(phase__code=phase_code).annotate(has_draft=Exists(drafts))
+
+
+def department_bucket(phase_code, key, machine_type=""):
+    annotated = _department_states(phase_code)
+    if machine_type:
+        annotated = annotated.filter(machine__planning__machine_type=machine_type)
+    if key == "awaiting":
+        return annotated.filter(status=PhaseStatus.IN_PROGRESS, has_draft=False, rework_open=False)
+    if key == "drafts":
+        return annotated.filter(status=PhaseStatus.IN_PROGRESS, has_draft=True, rework_open=False)
+    if key == "rework":
+        return annotated.filter(status=PhaseStatus.IN_PROGRESS, rework_open=True)
+    if key == "submitted":
+        return annotated.filter(status=PhaseStatus.COMPLETED)
+    if key == "assigned":
+        return annotated.filter(status__in=[PhaseStatus.IN_PROGRESS, PhaseStatus.COMPLETED])
+    return None
+
+
+def department_stats(phase_code, machine_type=""):
+    return {key: department_bucket(phase_code, key, machine_type).count() for key, *_rest in DEPARTMENT_CARDS}
+
+
+def department_cards(phase_code, machine_type=""):
+    stats = department_stats(phase_code, machine_type)
+    return [
+        {"key": key, "label": label, "tone": tone, "icon": icon, "note": note, "value": stats[key]}
+        for key, label, tone, icon, note in DEPARTMENT_CARDS
+    ]
+
+
+def machines_for_department_card(phase_code, key, machine_type=""):
+    states = department_bucket(phase_code, key, machine_type)
+    if states is None:
+        return None
+    return (
+        Machine.objects.filter(pk__in=states.values("machine_id"))
+        .select_related("planning", "station")
+        .order_by("machine_id")
+    )

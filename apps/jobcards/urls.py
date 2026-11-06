@@ -17,7 +17,9 @@ urlpatterns = [
     path("submissions/<int:pk>/", views.submission_detail, name="submission"),
     path("submissions/<int:pk>/revise/", views.revise, name="revise"),
     path("attachments/<int:pk>/", views.attachment, name="attachment"),
-    path("qc-videos/<str:machine_id>/", views.qc_video_upload, name="qc_video_upload"),
-    path("qc-videos/<str:machine_id>/<int:pk>/remove/", views.qc_video_remove, name="qc_video_remove"),
+    path("testing-videos/<str:machine_id>/", views.testing_video_upload, name="testing_video_upload"),
+    path("testing-videos/<str:machine_id>/<int:pk>/remove/", views.testing_video_remove, name="testing_video_remove"),
+    path("qc-photos/<str:machine_id>/", views.qc_photo_upload, name="qc_photo_upload"),
+    path("qc-photos/<str:machine_id>/<int:pk>/remove/", views.qc_photo_remove, name="qc_photo_remove"),
     path("<str:phase_code>/<str:machine_id>/", views.fill, name="fill"),
 ]

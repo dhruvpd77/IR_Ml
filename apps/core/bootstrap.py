@@ -22,7 +22,7 @@ def _floor(code, name, line, kind, sort_order, description):
 
 def _line_stations(prefix, line):
     return [
-        _floor(f"{prefix}-S4", "Station 4", line, StationKind.FINAL, 10, "FA – Final assembly / completion"),
+        _floor(f"{prefix}-S4", "Station 4", line, StationKind.FINAL, 10, "Assembly"),
         _floor(f"{prefix}-S3", "Station 3", line, StationKind.ASSEMBLY, 20, "Assembly"),
         _floor(f"{prefix}-S2", "Station 2", line, StationKind.ASSEMBLY, 30, "Assembly"),
         _floor(f"{prefix}-SA1", "Station 1 – SA-1", line, StationKind.SUB, 40, "Sub assembly"),
@@ -36,8 +36,8 @@ FLOOR_STATIONS = [
     _floor("SM-S3", "Station 3", ShopLine.SMALL, StationKind.ASSEMBLY, 10, "Assembly"),
     _floor("SM-S2", "Station 2", ShopLine.SMALL, StationKind.ASSEMBLY, 20, "Assembly"),
     _floor("SM-S1", "Station 1", ShopLine.SMALL, StationKind.ASSEMBLY, 30, "Assembly"),
-    _floor("SM-B2", "Station Build 2", ShopLine.SMALL, StationKind.SUB, 40, "Sub assembly"),
-    _floor("SM-B1", "Station Build 1", ShopLine.SMALL, StationKind.SUB, 50, "Sub assembly"),
+    _floor("SM-B2", "Station Build 2", ShopLine.SMALL, StationKind.ASSEMBLY, 40, "Assembly"),
+    _floor("SM-B1", "Station Build 1", ShopLine.SMALL, StationKind.ASSEMBLY, 50, "Assembly"),
 ]
 
 SETTINGS = [
@@ -71,6 +71,8 @@ def _ensure():
         role=Roles.PRODUCTION_LEADER,
         department=departments["PRODUCTION"],
     )
+    # Serial assignment and station allocation are one job, held by planner1.
+    User.objects.filter(username__in=["leader1", "leader2", "planner2"]).update(is_active=False)
     Department.objects.filter(code="PLANNER").update(
         is_active=False,
         description="Serial assignment is done by the production leader.",
@@ -110,6 +112,8 @@ def _ensure():
                 changed.append(field)
         if changed:
             station.save(update_fields=changed)
+    ProductionStation.objects.filter(code__in=["SM-B1", "SM-B2"]).update(kind=StationKind.ASSEMBLY, description="Assembly")
+    ProductionStation.objects.filter(code__in=["LM1-S4", "LM2-S4"]).update(description="Assembly")
     ProductionStation.objects.filter(code__in=LEGACY_STATIONS).update(is_active=False)
     for key, value, label in SETTINGS:
         SystemSetting.objects.get_or_create(key=key, defaults={"value": value, "label": label})
@@ -189,6 +193,34 @@ def _upgrade_job_cards():
                 is_active=True,
             )
         _write_fields(template, spec["fields"])
+    _ensure_media_fields()
+
+
+def _ensure_media_fields():
+    """Testing keeps the inspection video. Quality Control keeps compressed photos."""
+    extras = (
+        ("TESTING", "testing_video", "Inspection video", "Inspection video", "video"),
+        ("QC", "qc_photo", "Inspection photos", "Inspection photos", "image"),
+    )
+    for phase_code, key, section, label, field_type in extras:
+        template = JobCardTemplate.objects.filter(phase_code=phase_code, is_active=True).order_by("-version").first()
+        if template is None or template.fields.filter(field_key=key).exists():
+            continue
+        last = template.fields.order_by("-sort_order").values_list("sort_order", flat=True).first() or 0
+        JobCardField.objects.create(
+            template=template,
+            field_key=key,
+            section=section,
+            label=label,
+            field_type=field_type,
+            required=False,
+            sort_order=last + 1,
+        )
+    JobCardField.objects.filter(
+        template__phase_code="QC",
+        template__is_active=True,
+        field_key="qc_video",
+    ).update(is_active=False)
 
 
 def _close_passed_phases():

@@ -4,6 +4,18 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 
 
+def super_admin_required(view):
+    @login_required
+    @wraps(view)
+    def wrapper(request, *args, **kwargs):
+        user = request.user
+        if not (user.is_superuser or user.role == "SUPER_ADMIN"):
+            raise PermissionDenied
+        return view(request, *args, **kwargs)
+
+    return wrapper
+
+
 def management_required(view):
     @login_required
     @wraps(view)
