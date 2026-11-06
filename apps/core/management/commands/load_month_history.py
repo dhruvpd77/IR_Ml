@@ -1,19 +1,24 @@
 """Add 500 fake machines across September, October, and November 2026.
 
-Does not delete or change machines already in the database. November dates
-stop at today. Run again and existing HX26 work orders are skipped.
+Does not delete machines already in the database. November dates stop at
+today. Run again to continue: finished HX26 work orders are skipped, and a
+machine that stopped halfway is carried on. If the live site has the database
+open, the command waits and retries instead of stopping.
 
     python manage.py load_month_history
 """
 
-from datetime import date, datetime, time, timedelta
+import time
+from datetime import date, datetime, time as clock, timedelta
 
 from django.core.management.base import BaseCommand, CommandError
+from django.db import close_old_connections
+from django.db.utils import OperationalError
 from django.utils import timezone
 
 from accounts.models import User
 from core.bootstrap import ensure_reference_data
-from core.constants import TEST_AREAS, Roles
+from core.constants import TEST_AREAS, PhaseStatus, Roles
 from machines.models import Machine, MachinePlanningData, PlanningCatalogItem, ProductionStation
 from machines.services import register_machine
 from workflow.engine import (
@@ -111,8 +116,23 @@ def registered_at(day, shift, slot):
         hour = 7 + (slot % 8)
     else:
         hour = 15 + (slot % 7)
-    moment = datetime.combine(day, time(hour, (slot * 11) % 60))
+    moment = datetime.combine(day, clock(hour, (slot * 11) % 60))
     return timezone.make_aware(moment, timezone.get_current_timezone())
+
+
+_DONE_STEPS = {
+    "draft": (),
+    "planner": ("PLANNING",),
+    "production": ("PLANNING", "PLANNER"),
+    "build": ("PLANNING", "PLANNER", "PRODUCTION"),
+    "electrical_only": ("PLANNING", "PLANNER", "PRODUCTION", "ELECTRICAL"),
+    "assembly_only": ("PLANNING", "PLANNER", "PRODUCTION", "ASSEMBLY"),
+    "testing": ("PLANNING", "PLANNER", "PRODUCTION", "ASSEMBLY", "ELECTRICAL"),
+    "eol": ("PLANNING", "PLANNER", "PRODUCTION", "ASSEMBLY", "ELECTRICAL", "TESTING"),
+    "qc": ("PLANNING", "PLANNER", "PRODUCTION", "ASSEMBLY", "ELECTRICAL", "TESTING", "EOL"),
+    "done": ("PLANNING", "PLANNER", "PRODUCTION", "ASSEMBLY", "ELECTRICAL", "TESTING", "EOL", "QC"),
+    "rework_open": ("PLANNING", "PLANNER", "PRODUCTION", "ASSEMBLY", "ELECTRICAL", "TESTING", "EOL"),
+}
 
 
 class Command(BaseCommand):
@@ -147,34 +167,44 @@ class Command(BaseCommand):
         for (month, days), share in zip(months, shares):
             for index in range(1, share + 1):
                 work_order = f"HX26-{month:02d}-{index:04d}"
-                if MachinePlanningData.objects.filter(work_order=work_order).exists():
-                    skipped += 1
-                    continue
                 day = days[(index - 1) % len(days)]
                 shift = "1st shift" if ((index - 1) // len(days)) % 2 == 0 else "2nd shift"
-                company, machine_type, model, ccn = catalog[(month * 1000 + index) % len(catalog)]
                 level = level_for(month, index)
                 station = stations[(month + index) % len(stations)]
-                machine = register_machine(
-                    {
-                        "company": company,
-                        "work_order": work_order,
-                        "ccn": ccn or f"CCN-{month:02d}{index:04d}",
-                        "model_description": model,
-                        "machine_type": machine_type,
-                        "calibration": "Standard" if index % 3 else "Special",
-                        "shift": shift,
-                        "test_report_bar": "Standard" if index % 2 else "Other",
-                        "export_packing_required": "Yes" if index % 4 == 0 else "No",
-                        "customer_inspection": "Yes" if index % 5 == 0 else "No",
-                        "priority": PRIORITIES[index % len(PRIORITIES)],
-                    },
-                    planner,
-                )
-                self._advance(machine, level, actor, station, index, month)
-                self._stamp(machine, registered_at(day, shift, index))
+                when = registered_at(day, shift, index)
+                existing = MachinePlanningData.objects.select_related("machine").filter(work_order=work_order).first()
+                if existing and self._reached(existing.machine, level):
+                    skipped += 1
+                    close_old_connections()
+                    continue
+                if existing:
+                    machine = existing.machine
+                else:
+                    company, machine_type, model, ccn = catalog[(month * 1000 + index) % len(catalog)]
+                    machine = self._wait(
+                        work_order,
+                        lambda: register_machine(
+                            {
+                                "company": company,
+                                "work_order": work_order,
+                                "ccn": ccn or f"CCN-{month:02d}{index:04d}",
+                                "model_description": model,
+                                "machine_type": machine_type,
+                                "calibration": "Standard" if index % 3 else "Special",
+                                "shift": shift,
+                                "test_report_bar": "Standard" if index % 2 else "Other",
+                                "export_packing_required": "Yes" if index % 4 == 0 else "No",
+                                "customer_inspection": "Yes" if index % 5 == 0 else "No",
+                                "priority": PRIORITIES[index % len(PRIORITIES)],
+                            },
+                            planner,
+                        ),
+                    )
+                self._wait(work_order, lambda: self._advance(machine, level, actor, station, index, month))
+                self._wait(work_order, lambda: self._stamp(machine, when))
                 added += 1
                 by_month[month] += 1
+                close_old_connections()
                 if added % 25 == 0:
                     self.stdout.write(f"Added {added}...")
         names = {9: "September", 10: "October", 11: "November"}
@@ -198,43 +228,80 @@ class Command(BaseCommand):
             raise CommandError("Create a Super Admin or Admin before loading this history.")
         return actor
 
+    def _wait(self, label, action):
+        for attempt in range(6):
+            try:
+                return action()
+            except OperationalError as exc:
+                if "locked" not in str(exc).lower() or attempt == 5:
+                    raise
+                self.stdout.write(f"Database is busy on {label}. Waiting, then trying again.")
+                close_old_connections()
+                time.sleep(3 + attempt * 2)
+
+    def _phase_done(self, machine, code):
+        return machine.phase_states.filter(phase__code=code, status=PhaseStatus.COMPLETED).exists()
+
+    def _reached(self, machine, level):
+        from workflow.models import ReworkRequest
+
+        if level == "done":
+            return machine.status == "COMPLETED" or self._phase_done(machine, "QC")
+        if level == "rework_open":
+            return ReworkRequest.objects.filter(machine=machine).exists()
+        return all(self._phase_done(machine, code) for code in _DONE_STEPS[level])
+
     def _advance(self, machine, level, user, station, index, month):
+        from workflow.models import ReworkRequest
+
         serial = f"HXSN-{month:02d}{index:04d}"
         production_serial = f"HXPR-{month:02d}{index:04d}"
-        if level == "draft":
+        machine.refresh_from_db()
+        if level == "draft" or self._reached(machine, level):
             return
-        machine = submit_planning(machine, user)
+        if not self._phase_done(machine, "PLANNING"):
+            machine = submit_planning(machine, user)
         if level == "planner":
             return
-        machine = planner_release(machine, user, serial)
+        if not self._phase_done(machine, "PLANNER"):
+            machine = planner_release(machine, user, serial)
         if level == "production":
             return
-        machine = production_release(
-            machine, user, station, production_serial=production_serial, remarks="Released to the station."
-        )
+        if not self._phase_done(machine, "PRODUCTION"):
+            machine = production_release(
+                machine, user, station, production_serial=production_serial, remarks="Released to the station."
+            )
         if level == "build":
             return
         if level == "electrical_only":
-            submit_job_card(machine, user, "ELECTRICAL", {}, remarks="Electrical started.", skip_required=True)
+            if not self._phase_done(machine, "ELECTRICAL"):
+                submit_job_card(machine, user, "ELECTRICAL", {}, remarks="Electrical started.", skip_required=True)
             return
-        machine = submit_job_card(machine, user, "ASSEMBLY", {}, remarks="Assembly complete.", skip_required=True)
+        if not self._phase_done(machine, "ASSEMBLY"):
+            machine = submit_job_card(machine, user, "ASSEMBLY", {}, remarks="Assembly complete.", skip_required=True)
         if level == "assembly_only":
             return
-        machine = submit_job_card(machine, user, "ELECTRICAL", {}, remarks="Electrical complete.", skip_required=True)
-        machine.test_area = LINE_AREA.get(station.line, TEST_AREAS[0])
-        machine.save(update_fields=["test_area", "updated_at"])
+        if not self._phase_done(machine, "ELECTRICAL"):
+            machine = submit_job_card(machine, user, "ELECTRICAL", {}, remarks="Electrical complete.", skip_required=True)
+        if not machine.test_area:
+            machine.test_area = LINE_AREA.get(station.line, TEST_AREAS[0])
+            machine.save(update_fields=["test_area", "updated_at"])
         if level == "testing":
             return
-        machine = submit_job_card(machine, user, "TESTING", {}, remarks="Test passed.", skip_required=True)
+        if not self._phase_done(machine, "TESTING"):
+            machine = submit_job_card(machine, user, "TESTING", {}, remarks="Test passed.", skip_required=True)
         if level == "eol":
             return
-        machine = submit_job_card(machine, user, "EOL", {}, remarks="EOL accepted.", skip_required=True)
+        if not self._phase_done(machine, "EOL"):
+            machine = submit_job_card(machine, user, "EOL", {}, remarks="EOL accepted.", skip_required=True)
         if level == "qc":
             return
         if level == "done":
-            approve_qc(machine, user, {}, remarks="Released.", skip_required=True)
+            if not self._phase_done(machine, "QC"):
+                approve_qc(machine, user, {}, remarks="Released.", skip_required=True)
             return
-        reject_machine(machine, user, "ASSEMBLY", "Leak found at the discharge connection during the final check.")
+        if not ReworkRequest.objects.filter(machine=machine).exists():
+            reject_machine(machine, user, "ASSEMBLY", "Leak found at the discharge connection during the final check.")
 
     def _stamp(self, machine, when):
         approved = when
