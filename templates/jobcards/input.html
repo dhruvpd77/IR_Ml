@@ -16,7 +16,7 @@
       <div class="video-box" data-video-box data-upload-url="{% url 'jobcards:testing_video_upload' machine.machine_id %}" data-remove-base="{% url 'jobcards:testing_video_upload' machine.machine_id %}">
         <div class="video-busy" data-video-busy hidden>
           <span class="spinner" aria-hidden="true"></span>
-          <p data-video-busy-text>Processing video…</p>
+          <p data-video-busy-text>Compressing and uploading…</p>
         </div>
         <div class="video-saved" data-video-saved>
           {% with existing=existing_files|getitem:field.field_key %}
@@ -28,13 +28,25 @@
             {% endfor %}
           {% endwith %}
         </div>
-        <video class="clip" data-video-preview controls playsinline hidden></video>
+        <div class="media-studio" data-video-studio hidden>
+          <div class="media-studio-frame">
+            <video class="media-preview" data-video-preview playsinline muted></video>
+            <div class="media-studio-meter">
+              <span class="rec-pill" data-rec-dot hidden>REC</span>
+              <time data-video-timer>00:00 / 02:00</time>
+            </div>
+          </div>
+          <div class="btn-row media-studio-actions">
+            <button class="btn-primary" type="button" data-video-arm>Start recording</button>
+            <button class="btn-danger" type="button" data-video-stop hidden>Stop</button>
+            <button class="btn-ghost" type="button" data-video-close>Close camera</button>
+          </div>
+        </div>
         <ul class="video-queue" data-video-list></ul>
-        <p class="muted" data-video-status>Record or choose the inspection video, then press Upload video. Saving the card does not send the video.</p>
+        <p class="muted" data-video-status>Open the camera for a live preview, press Start recording when ready (up to 2 minutes), or choose from gallery. Every clip is compressed before it is stored.</p>
         <div class="btn-row" data-video-actions>
-          <label class="btn-primary video-pick" data-video-camera-label>Record from camera<input type="file" accept="video/*" capture="environment" data-video-camera></label>
-          <button class="btn-primary" type="button" data-video-record hidden>Record from camera</button>
-          <button class="btn-danger" type="button" data-video-stop hidden>Stop</button>
+          <label class="btn-primary video-pick" data-video-camera-label>Open camera<input type="file" accept="video/*" capture="environment" data-video-camera></label>
+          <button class="btn-primary" type="button" data-video-open hidden>Open camera</button>
           <label class="btn-ghost video-pick">Choose from gallery<input type="file" accept="video/*" multiple data-video-gallery></label>
           <button class="btn-primary" type="button" data-video-upload disabled>Upload video</button>
         </div>

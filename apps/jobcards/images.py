@@ -35,12 +35,6 @@ def compress_image(upload):
         except Exception:
             pass
         return upload
-    original = getattr(upload, "size", 0) or 0
-    if original and len(data) > original:
-        try:
-            upload.seek(0)
-        except Exception:
-            pass
-        return upload
+    # Always store the compressed JPEG so every photo is size-reduced for the shop.
     stem = os.path.splitext(os.path.basename(upload.name or "photo"))[0][:180] or "photo"
     return SimpleUploadedFile(f"{stem}.jpg", data, content_type="image/jpeg")

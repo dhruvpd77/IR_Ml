@@ -7,8 +7,8 @@ import tempfile
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 
-# Skip re-encode when the phone file is already small enough for the shop.
-SKIP_BELOW = 4 * 1024 * 1024
+# Always compress inspection clips so shop storage stays small and consistent.
+SKIP_BELOW = 0
 
 
 def ffmpeg_exe():
@@ -30,7 +30,7 @@ def compress_video(upload):
     if upload is None:
         return upload
     original = getattr(upload, "size", 0) or 0
-    if original and original <= SKIP_BELOW:
+    if SKIP_BELOW and original and original <= SKIP_BELOW:
         try:
             upload.seek(0)
         except Exception:
@@ -46,9 +46,9 @@ def compress_video(upload):
         for chunk in upload.chunks():
             source.write(chunk)
         source.close()
-        # One fast pass only: 480px, ultrafast, light audio. No second encode.
-        encoded = _encode(exe, source.name, target, width=480, crf=40, rate="280k", audio="24k") or _encode(
-            exe, source.name, target, width=480, crf=40, rate="280k", audio=""
+        # Fast 480p pass for phone clips up to 2 minutes.
+        encoded = _encode(exe, source.name, target, width=480, crf=38, rate="320k", audio="32k") or _encode(
+            exe, source.name, target, width=480, crf=38, rate="320k", audio=""
         )
         if not encoded:
             upload.seek(0)
@@ -113,7 +113,8 @@ def _encode(exe, source, target, width, crf, rate, audio):
         command.append("-an")
     command.append(target)
     try:
-        result = subprocess.run(command, capture_output=True, timeout=180)
+        # Allow enough time for a full 2-minute phone clip on a busy host.
+        result = subprocess.run(command, capture_output=True, timeout=360)
     except subprocess.TimeoutExpired:
         return False
     if result.returncode != 0 or not os.path.exists(target):
