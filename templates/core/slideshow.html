@@ -1,7 +1,15 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Slideshow{% endblock %}
 {% block content %}
 <div class="slideshow" data-slideshow data-seconds="{{ slide_seconds }}" id="slideshow-root">
+  <div class="slideshow-brand">
+    <img src="{% static 'img/ir-logo.jpg' %}" alt="Ingersoll Rand">
+    <div>
+      <strong>Ingersoll Rand</strong>
+      <time data-clock></time>
+    </div>
+  </div>
   <div class="slideshow-stage" data-slide-stage>
     <iframe class="slideshow-frame" data-slide-frame title="Live board" src="{{ slides.0.url }}"></iframe>
   </div>

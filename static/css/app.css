@@ -266,7 +266,20 @@ img, svg, canvas, table { max-width: 100%; }
 .live-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--c, #64748b); display: block; flex: 0 0 auto; box-shadow: 0 0 0 4px color-mix(in srgb, var(--c, #64748b) 28%, transparent), 0 0 12px var(--c, #64748b); }
 .fs-brand { display: none; }
 .page:fullscreen .fs-brand,
-.page:-webkit-full-screen .fs-brand { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 8px; padding: 8px 14px; background: white; border: 1px solid var(--line); border-radius: 14px; }
+.page:-webkit-full-screen .fs-brand,
+.page.is-fullscreen .fs-brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 8px;
+  padding: 8px 14px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+/* Inside slideshow iframes the outer slideshow chrome already shows logo + clock. */
+body.is-embed .fs-brand { display: none; }
 .fs-brand img { height: 46px; width: auto; object-fit: contain; }
 .fs-brand strong { display: block; color: #0b1d36; letter-spacing: .04em; }
 .fs-brand time { font-variant-numeric: tabular-nums; font-weight: 800; color: #b42318; font-size: 22px; }
@@ -291,23 +304,41 @@ body.is-embed .page-head .btn-row { display: none !important; }
 .page.is-embed-page { padding: 12px 16px 24px; }
 .slideshow {
   display: grid;
-  gap: 14px;
+  gap: 10px;
   min-height: calc(100vh - 140px);
   background: #0b1d36;
   border-radius: 18px;
   padding: 12px;
   color: white;
+  grid-template-rows: auto 1fr auto;
+}
+.slideshow-brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 14px;
+  background: white;
+  border-radius: 14px;
+  color: #0b1d36;
+}
+.slideshow-brand img { height: 46px; width: auto; object-fit: contain; }
+.slideshow-brand strong { display: block; letter-spacing: .04em; }
+.slideshow-brand time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  color: #b42318;
+  font-size: 22px;
 }
 .slideshow-stage {
-  flex: 1;
-  min-height: 62vh;
+  min-height: 0;
   border-radius: 14px;
   overflow: hidden;
   background: #f8fafc;
 }
 .slideshow-frame {
   width: 100%;
-  height: min(72vh, 900px);
+  height: min(68vh, 860px);
   border: 0;
   background: white;
   display: block;
@@ -330,7 +361,7 @@ body.is-embed .page-head .btn-row { display: none !important; }
   height: 100vh;
   width: 100vw;
   padding: 10px;
-  grid-template-rows: 1fr auto;
+  grid-template-rows: auto 1fr auto;
 }
 .slideshow.is-fullscreen .slideshow-stage,
 .slideshow:fullscreen .slideshow-stage,
@@ -338,6 +369,14 @@ body.is-embed .page-head .btn-row { display: none !important; }
 .slideshow.is-fullscreen .slideshow-frame,
 .slideshow:fullscreen .slideshow-frame,
 .slideshow:-webkit-full-screen .slideshow-frame { height: 100%; }
+.slideshow.is-fullscreen .slideshow-brand,
+.slideshow:fullscreen .slideshow-brand,
+.slideshow:-webkit-full-screen .slideshow-brand {
+  flex: 0 0 auto;
+}
+.slideshow.is-fullscreen .slideshow-brand time,
+.slideshow:fullscreen .slideshow-brand time,
+.slideshow:-webkit-full-screen .slideshow-brand time { font-size: 28px; }
 .live-badge::before {
   content: "";
   width: 8px;
