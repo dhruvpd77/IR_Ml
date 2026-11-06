@@ -39,7 +39,6 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.humanize",
     "rest_framework",
-    "storages",
     "core",
     "accounts",
     "machines",
@@ -131,6 +130,13 @@ STORAGES = {
 # Videos and photos: local disk by default. Set USE_S3=true on PythonAnywhere.
 USE_S3 = env_bool("USE_S3", False)
 if USE_S3:
+    try:
+        import storages  # noqa: F401
+    except ImportError as exc:
+        from django.core.exceptions import ImproperlyConfigured
+
+        raise ImproperlyConfigured("USE_S3 is on. Install: pip install 'django-storages[s3]' boto3") from exc
+    INSTALLED_APPS.append("storages")
     AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "")
     AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "")
     AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME", "")
