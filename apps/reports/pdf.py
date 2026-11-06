@@ -1,5 +1,6 @@
 import io
 import os
+import re
 from xml.sax.saxutils import escape
 
 from django.utils import timezone
@@ -10,18 +11,30 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+_FONT_DIR = os.path.join(os.path.dirname(__file__), "fonts")
+_LATIN_REGULAR = os.path.join(_FONT_DIR, "NotoSans-Regular.ttf")
+_LATIN_BOLD = os.path.join(_FONT_DIR, "NotoSans-Bold.ttf")
+_GUJ_REGULAR = os.path.join(_FONT_DIR, "NotoSansGujarati-Regular.ttf")
+_GUJ_BOLD = os.path.join(_FONT_DIR, "NotoSansGujarati-Bold.ttf")
+
+# Noto Sans Gujarati has no Latin letters, so English used to disappear in the PDF.
+# Use Noto Sans for Latin and Noto Sans Gujarati only for Gujarati script.
 _FONT = "Helvetica"
 _FONT_BOLD = "Helvetica-Bold"
-_FONT_DIR = os.path.join(os.path.dirname(__file__), "fonts")
-_BUNDLED_REGULAR = os.path.join(_FONT_DIR, "NotoSansGujarati-Regular.ttf")
-_BUNDLED_BOLD = os.path.join(_FONT_DIR, "NotoSansGujarati-Bold.ttf")
-# Bundled so the job card looks the same on Windows and on PythonAnywhere.
-# The Linux system font drops English letters and stacks the remaining text.
-if os.path.exists(_BUNDLED_REGULAR):
-    pdfmetrics.registerFont(TTFont("JobCard", _BUNDLED_REGULAR))
-    pdfmetrics.registerFont(TTFont("JobCard-Bold", _BUNDLED_BOLD if os.path.exists(_BUNDLED_BOLD) else _BUNDLED_REGULAR))
+_FONT_GUJ = _FONT
+_FONT_GUJ_BOLD = _FONT_BOLD
+if os.path.exists(_LATIN_REGULAR):
+    pdfmetrics.registerFont(TTFont("JobCard", _LATIN_REGULAR))
+    pdfmetrics.registerFont(TTFont("JobCard-Bold", _LATIN_BOLD if os.path.exists(_LATIN_BOLD) else _LATIN_REGULAR))
     _FONT = "JobCard"
     _FONT_BOLD = "JobCard-Bold"
+if os.path.exists(_GUJ_REGULAR):
+    pdfmetrics.registerFont(TTFont("JobCardGuj", _GUJ_REGULAR))
+    pdfmetrics.registerFont(TTFont("JobCardGuj-Bold", _GUJ_BOLD if os.path.exists(_GUJ_BOLD) else _GUJ_REGULAR))
+    _FONT_GUJ = "JobCardGuj"
+    _FONT_GUJ_BOLD = "JobCardGuj-Bold"
+
+_GUJARATI_RE = re.compile(r"[\u0A80-\u0AFF]+")
 
 
 NAVY = colors.HexColor("#0B1D36")
@@ -53,6 +66,23 @@ GRID_SECTIONS = {
 }
 
 
+def _rich(value, bold=False):
+    """Escape text and wrap Gujarati runs in the Gujarati font so English stays visible."""
+    shown = "—" if value in (None, "") else str(value)
+    latin = _FONT_BOLD if bold else _FONT
+    guj = _FONT_GUJ_BOLD if bold else _FONT_GUJ
+    parts = []
+    cursor = 0
+    for match in _GUJARATI_RE.finditer(shown):
+        if match.start() > cursor:
+            parts.append(f'<font name="{latin}">{escape(shown[cursor:match.start()])}</font>')
+        parts.append(f'<font name="{guj}">{escape(match.group(0))}</font>')
+        cursor = match.end()
+    if cursor < len(shown):
+        parts.append(f'<font name="{latin}">{escape(shown[cursor:])}</font>')
+    return "".join(parts) or f'<font name="{latin}">—</font>'
+
+
 def _styles():
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name="IRTitle", fontName=_FONT_BOLD, fontSize=16, textColor=NAVY, spaceAfter=4))
@@ -63,8 +93,8 @@ def _styles():
 
 
 def _paragraphs(headers, rows, style):
-    header = [Paragraph(escape(str(item)), style) for item in headers]
-    body = [[Paragraph(escape(str(item if item not in (None, "") else "—"))[:500], style) for item in row] for row in rows]
+    header = [Paragraph(_rich(item, bold=True), style) for item in headers]
+    body = [[Paragraph(_rich(str(item if item not in (None, "") else "—")[:500]), style) for item in row] for row in rows]
     return [header] + body
 
 
@@ -79,7 +109,7 @@ def table_pdf(title, subtitle, headers, rows):
             [
                 ("BACKGROUND", (0, 0), (-1, 0), NAVY),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTNAME", (0, 0), (-1, 0), _FONT_BOLD),
                 ("GRID", (0, 0), (-1, -1), 0.3, LINE),
                 ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, ZEBRA]),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -92,9 +122,9 @@ def table_pdf(title, subtitle, headers, rows):
     )
     document.build(
         [
-            Paragraph("Ingersoll Rand · MQMS", styles["IRSub"]),
-            Paragraph(escape(title), styles["IRTitle"]),
-            Paragraph(escape(subtitle), styles["IRSub"]),
+            Paragraph(_rich("Ingersoll Rand · MQMS"), styles["IRSub"]),
+            Paragraph(_rich(title, bold=True), styles["IRTitle"]),
+            Paragraph(_rich(subtitle), styles["IRSub"]),
             table,
         ]
     )
@@ -122,8 +152,8 @@ def _card_styles():
 
 
 def _text(value, style):
-    shown = "—" if value in (None, "") else str(value)
-    return Paragraph(escape(shown), style)
+    bold = "Bold" in (getattr(style, "fontName", "") or "")
+    return Paragraph(_rich(value, bold=bold), style)
 
 
 def _widths(*ratios):
@@ -159,7 +189,7 @@ def _logo_mark(styles, company=""):
     path = _logo_file(company)
     if path:
         return Image(path, width=156, height=36, kind="proportional", mask="auto", hAlign="LEFT")
-    mark = Table([[Paragraph("IR", styles["CardWhite"])]], colWidths=[46], rowHeights=[46])
+    mark = Table([[Paragraph(_rich("IR", bold=True), styles["CardWhite"])]], colWidths=[46], rowHeights=[46])
     return _paint(
         mark,
         [
@@ -172,7 +202,7 @@ def _logo_mark(styles, company=""):
 
 def _banner(left, right, fill, styles, size=11):
     left_style = ParagraphStyle("banner-left", parent=styles["CardWhite"], fontSize=size, leading=size + 3)
-    data = [[Paragraph(escape(left), left_style), Paragraph(escape(right), styles["CardWhiteSmall"])]]
+    data = [[Paragraph(_rich(left, bold=True), left_style), Paragraph(_rich(right), styles["CardWhiteSmall"])]]
     table = Table(data, colWidths=_widths(62, 38))
     return _paint(
         table,
@@ -367,7 +397,7 @@ def _stamp(submission):
 
 def _header_block(machine, styles):
     planning = machine.planning
-    badge = Table([[Paragraph("ULTRA COOLANT OIL", styles["CardBadge"])]], colWidths=[148])
+    badge = Table([[Paragraph(_rich("ULTRA COOLANT OIL", bold=True), styles["CardBadge"])]], colWidths=[148])
     badge.hAlign = "RIGHT"
     _paint(
         badge,
@@ -380,14 +410,17 @@ def _header_block(machine, styles):
         ],
     )
     title = [
-        Paragraph("OIL FREE IRN-SEEIRA-DX", styles["CardTitleRight"]),
+        Paragraph(_rich("OIL FREE IRN-SEEIRA-DX", bold=True), styles["CardTitleRight"]),
         Spacer(1, 4),
         badge,
         Spacer(1, 4),
-        Paragraph(escape(machine.machine_id), styles["CardRight"]),
+        Paragraph(_rich(machine.machine_id, bold=True), styles["CardRight"]),
     ]
     address = Paragraph(
-        "Ingersoll Rand (I) Ltd.<br/>21-30 GIDC Industrial Estate,<br/>Naroda, Ahmedabad- 382330<br/>Gujarat, India",
+        _rich("Ingersoll Rand (I) Ltd.") + "<br/>"
+        + _rich("21-30 GIDC Industrial Estate,") + "<br/>"
+        + _rich("Naroda, Ahmedabad- 382330") + "<br/>"
+        + _rich("Gujarat, India"),
         styles["CardAddress"],
     )
     header = Table([[_logo_mark(styles, planning.company), address, title]], colWidths=_widths(32, 34, 34))
@@ -555,7 +588,7 @@ def machine_history_pdf(machine, steps, submissions, events, reworks):
 
 def _plain_table(rows, header=False):
     styles = _styles()
-    data = [[Paragraph(escape(str(value if value not in (None, "") else "—")), styles["IRCell"]) for value in row] for row in rows]
+    data = [[Paragraph(_rich(value), styles["IRCell"]) for value in row] for row in rows]
     table = Table(data, hAlign="LEFT")
     commands = [
         ("GRID", (0, 0), (-1, -1), 0.3, LINE),
