@@ -138,7 +138,8 @@ TESTING_FIELDS = [
 def _elec(number, section, label):
     shown = f"{number}. {label}"
     return [
-        (f"elec_{number}_ok", section, shown, "radio", False, "", "OK|NOT OK"),
+        # OK / NOT OK is the only compulsory column; value and remark stay optional.
+        (f"elec_{number}_ok", section, shown, "radio", True, "", "OK|NOT OK"),
         (f"elec_{number}_value", section, f"{number}. મૂલ્ય / નોંધ", "short_text", False, "", ""),
         (f"elec_{number}_remark", section, f"{number}. Remark", "short_text", False, "", ""),
     ]

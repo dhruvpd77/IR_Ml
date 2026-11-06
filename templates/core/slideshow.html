@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Slideshow{% endblock %}
+{% block content %}
+<div class="slideshow" data-slideshow data-seconds="{{ slide_seconds }}" id="slideshow-root">
+  <div class="slideshow-stage" data-slide-stage>
+    <iframe class="slideshow-frame" data-slide-frame title="Live board" src="{{ slides.0.url }}"></iframe>
+  </div>
+  <div class="slideshow-bar">
+    <div>
+      <p class="eyebrow">Big screen loop</p>
+      <strong data-slide-label>{{ slides.0.label }}</strong>
+      <p class="muted">Rotates every {{ slide_seconds }} seconds · live boards stay updating inside each screen</p>
+    </div>
+    <div class="btn-row">
+      <button class="btn-ghost" type="button" data-slide-prev>Previous</button>
+      <button class="btn-ghost" type="button" data-slide-next>Next</button>
+      <button class="btn-primary" type="button" data-slide-start>Start full screen</button>
+    </div>
+  </div>
+</div>
+{{ slides|json_script:"slideshow-data" }}
+{% endblock %}
+{% block extra_js %}
+<script>
+(() => {
+  const root = document.querySelector("[data-slideshow]");
+  if (!root) return;
+  const slides = JSON.parse(document.getElementById("slideshow-data").textContent);
+  const frame = root.querySelector("[data-slide-frame]");
+  const label = root.querySelector("[data-slide-label]");
+  const seconds = Math.max(5, Number(root.dataset.seconds || 15));
+  let index = 0;
+  let timer = null;
+
+  const show = (next) => {
+    index = (next + slides.length) % slides.length;
+    const slide = slides[index];
+    frame.src = slide.url;
+    if (label) label.textContent = slide.label;
+  };
+
+  const startTimer = () => {
+    if (timer) clearInterval(timer);
+    timer = setInterval(() => show(index + 1), seconds * 1000);
+  };
+
+  const enterFullscreen = () => {
+    const target = root;
+    const active = document.fullscreenElement || document.webkitFullscreenElement;
+    if (active === target) return;
+    const enter = target.requestFullscreen || target.webkitRequestFullscreen;
+    if (enter) enter.call(target).catch(() => {});
+  };
+
+  root.querySelector("[data-slide-prev]")?.addEventListener("click", () => {
+    show(index - 1);
+    startTimer();
+  });
+  root.querySelector("[data-slide-next]")?.addEventListener("click", () => {
+    show(index + 1);
+    startTimer();
+  });
+  root.querySelector("[data-slide-start]")?.addEventListener("click", () => {
+    enterFullscreen();
+    startTimer();
+  });
+
+  document.addEventListener("fullscreenchange", () => {
+    root.classList.toggle("is-fullscreen", document.fullscreenElement === root);
+  });
+  document.addEventListener("webkitfullscreenchange", () => {
+    root.classList.toggle("is-fullscreen", document.webkitFullscreenElement === root);
+  });
+
+  startTimer();
+})();
+</script>
+{% endblock %}

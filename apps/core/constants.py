@@ -12,6 +12,7 @@ class Roles:
     TESTING = "TESTING"
     EOL = "EOL"
     QC = "QC"
+    GENERAL_USER = "GENERAL_USER"
 
     CHOICES = [
         (SUPER_ADMIN, "Super Admin"),
@@ -23,8 +24,10 @@ class Roles:
         (TESTING, "Testing"),
         (EOL, "EOL"),
         (QC, "Quality Control"),
+        (GENERAL_USER, "General User"),
     ]
     MANAGEMENT = {SUPER_ADMIN, ADMIN}
+    BOARD_VIEWERS = {SUPER_ADMIN, ADMIN, GENERAL_USER}
     PHASE_ROLES = [
         PLANNING_DATA_ENTRY,
         PRODUCTION_LEADER,
@@ -243,6 +246,7 @@ ROLE_DEPARTMENT = {
     Roles.TESTING: "TESTING",
     Roles.EOL: "EOL",
     Roles.QC: "QC",
+    Roles.GENERAL_USER: "ADMIN",
 }
 
 DEPARTMENTS = [

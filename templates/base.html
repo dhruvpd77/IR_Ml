@@ -13,15 +13,17 @@
   <script>
     tailwind.config = { theme: { extend: { colors: { navy: "#0B1D36", ir: "#E10600" } } } };
   </script>
-  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=17">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=18">
 </head>
-<body>
-  <div id="shell" class="shell">
-    {% include "includes/sidebar.html" %}
-    <button class="sidebar-backdrop" type="button" aria-label="Close menu"></button>
+<body class="{% if embed_mode %}is-embed{% endif %}">
+  <div id="shell" class="shell{% if embed_mode %} is-embed{% endif %}">
+    {% if not embed_mode %}
+      {% include "includes/sidebar.html" %}
+      <button class="sidebar-backdrop" type="button" aria-label="Close menu"></button>
+    {% endif %}
     <div class="main">
-      {% include "includes/topbar.html" %}
-      <main id="workspace" class="page">
+      {% if not embed_mode %}{% include "includes/topbar.html" %}{% endif %}
+      <main id="workspace" class="page{% if embed_mode %} is-embed-page{% endif %}">
         <div class="fs-brand">
           <img src="{% static 'img/ir-logo.jpg' %}" alt="Ingersoll Rand">
           <div>
@@ -41,7 +43,7 @@
     </div>
   </div>
   <script src="https://unpkg.com/lucide@latest"></script>
-  <script src="{% static 'js/app.js' %}?v=10"></script>
+  <script src="{% static 'js/app.js' %}?v=12"></script>
   {% block extra_js %}{% endblock %}
 </body>
 </html>

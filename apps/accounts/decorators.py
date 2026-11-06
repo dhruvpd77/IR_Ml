@@ -27,6 +27,19 @@ def management_required(view):
     return wrapper
 
 
+def board_viewer_required(view):
+    """Management plus General User (big-screen dashboards / analytics / slideshow)."""
+
+    @login_required
+    @wraps(view)
+    def wrapper(request, *args, **kwargs):
+        if not request.user.is_board_viewer:
+            raise PermissionDenied
+        return view(request, *args, **kwargs)
+
+    return wrapper
+
+
 def roles_required(*roles):
     allowed = set(roles)
 

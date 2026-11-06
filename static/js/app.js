@@ -163,7 +163,8 @@ document.addEventListener("DOMContentLoaded", () => {
       syncTestReports(clone);
     });
   }
-  document.querySelectorAll("form[data-require-all]").forEach((form) => {
+  document.querySelectorAll("form[data-require-all], form[data-require-ok-only]").forEach((form) => {
+    const okOnly = form.hasAttribute("data-require-ok-only");
     const boxFor = (field) => field.closest(".check-row, .elec-row > div, .field") || field.parentElement;
     const mark = (box) => {
       if (!box || box.closest("[hidden]")) return false;
@@ -191,6 +192,7 @@ document.addEventListener("DOMContentLoaded", () => {
       };
       form.querySelectorAll("textarea, select, input").forEach((field) => {
         if (field.disabled || field.closest("[hidden]")) return;
+        if (field.hasAttribute("data-optional") || field.closest("[data-optional]")) return;
         if (field.type === "hidden" || field.type === "file" || field.type === "button" || field.type === "submit") return;
         const box = boxFor(field);
         if (field.type === "radio") {
@@ -198,18 +200,21 @@ document.addEventListener("DOMContentLoaded", () => {
           if (!chosen) flag(box);
           return;
         }
+        if (okOnly) return;
         if (field.type === "checkbox") {
           if (!field.checked) flag(box);
           return;
         }
         if (!String(field.value || "").trim()) flag(box);
       });
-      form.querySelectorAll("[data-video-box]").forEach((box) => {
-        if (!box.querySelector("[data-video-clip]")) flag(box.closest(".check-row, .field") || box);
-      });
-      form.querySelectorAll("[data-photo-box]").forEach((box) => {
-        if (!box.querySelector("[data-photo-clip]")) flag(box.closest(".field") || box);
-      });
+      if (!okOnly) {
+        form.querySelectorAll("[data-video-box]").forEach((box) => {
+          if (!box.querySelector("[data-video-clip]")) flag(box.closest(".check-row, .field") || box);
+        });
+        form.querySelectorAll("[data-photo-box]").forEach((box) => {
+          if (!box.querySelector("[data-photo-clip]")) flag(box.closest(".field") || box);
+        });
+      }
       if (!first) return;
       event.preventDefault();
       first.scrollIntoView({ behavior: "smooth", block: "center" });

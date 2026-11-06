@@ -10,7 +10,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import strip_tags
 
-from accounts.decorators import management_required, super_admin_required
+from accounts.decorators import board_viewer_required, management_required, super_admin_required
 from accounts.permissions import can_operate_phase
 from core.constants import PhaseCode, PhaseStatus, Roles
 from core.navigation import home_phase
@@ -134,7 +134,7 @@ def not_found_page(request, exception):
     return render(request, "404.html", status=404)
 
 
-@management_required
+@board_viewer_required
 def machine_analytics(request):
     shift = chosen_shift(request)
     on_date = None
@@ -171,7 +171,7 @@ def machine_analytics(request):
     return render(request, "core/analytics.html", context)
 
 
-@management_required
+@board_viewer_required
 def dashboard_card(request, key):
     machine_type = chosen_machine_type(request)
     scope = (request.GET.get("scope") or "").strip()
@@ -353,14 +353,31 @@ def _render_management_dashboard(request, mode):
     return render(request, "core/dashboard_admin.html", context)
 
 
-@management_required
+@board_viewer_required
 def monthly_dashboard(request):
     return _render_management_dashboard(request, "monthly")
 
 
-@management_required
+@board_viewer_required
 def daily_dashboard(request):
     return _render_management_dashboard(request, "daily")
+
+
+@board_viewer_required
+def dashboard_slideshow(request):
+    slides = [
+        {"label": "Monthly dashboard", "url": f"{reverse('core:monthly')}?embed=1"},
+        {"label": "Daily dashboard", "url": f"{reverse('core:daily')}?embed=1"},
+        {"label": "Machine analytics", "url": f"{reverse('core:analytics')}?embed=1"},
+    ]
+    return render(
+        request,
+        "core/slideshow.html",
+        {
+            "slides": slides,
+            "slide_seconds": 15,
+        },
+    )
 
 
 @super_admin_required
@@ -405,6 +422,8 @@ def tentative_plan(request):
 @login_required
 def dashboard(request):
     machine_type = chosen_machine_type(request)
+    if request.user.is_general_user:
+        return redirect("core:slideshow")
     phase_code = home_phase(request.user)
     if phase_code is None:
         target = reverse("core:monthly")

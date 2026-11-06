@@ -36,6 +36,7 @@ PEOPLE = [
     ("eol2", Roles.EOL, "Kavita", "Bose"),
     ("qc1", Roles.QC, "Nandita", "Sen"),
     ("qc2", Roles.QC, "Rahul", "Verma"),
+    ("general", Roles.GENERAL_USER, "General", "User"),
 ]
 MODELS = [
     ("R90n Contact-Cooled Rotary 90 kW", "Rotary Screw"),

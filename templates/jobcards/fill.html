@@ -163,11 +163,12 @@
       </div>
     {% elif editable and is_qc %}
       <h3 class="section-title">QC decision</h3>
-      <label class="field"><span class="field-label">Send back to</span>
-        <select class="field-input" name="target_phase"><option value="">Select a phase for rejection</option>{% for target in targets %}<option value="{{ target.code }}">{{ target.name }}</option>{% endfor %}</select>
+      <p class="muted">Send back to and rejection reason are only needed when rejecting. They are optional for approval.</p>
+      <label class="field" data-optional="1"><span class="field-label">Send back to</span>
+        <select class="field-input" name="target_phase" data-optional="1"><option value="">Select a phase for rejection</option>{% for target in targets %}<option value="{{ target.code }}">{{ target.name }}</option>{% endfor %}</select>
       </label>
-      <label class="field"><span class="field-label">Rejection reason</span><textarea class="field-input" name="reason" rows="3"></textarea></label>
-      <label class="field"><span class="field-label">Evidence photographs</span><input class="file-input" type="file" name="evidence" accept="image/*" multiple></label>
+      <label class="field" data-optional="1"><span class="field-label">Rejection reason</span><textarea class="field-input" name="reason" rows="3" data-optional="1"></textarea></label>
+      <label class="field" data-optional="1"><span class="field-label">Evidence photographs</span><input class="file-input" type="file" name="evidence" accept="image/*" multiple data-optional="1"></label>
       <div class="btn-row">
         <button class="btn-ghost" name="action" value="draft" type="submit">Save draft</button>
         <button class="btn-danger" name="action" value="reject" type="submit">Reject and rework</button>

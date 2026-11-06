@@ -8,7 +8,7 @@ from django.utils import timezone
 from PIL import Image, UnidentifiedImageError
 
 from audit.utils import log_audit
-from core.constants import EventType, FieldType
+from core.constants import EventType, FieldType, PhaseCode
 from jobcards.models import JobCardResponse, JobCardSubmission, JobCardTemplate, MachineAttachment
 from jobcards.images import compress_image
 from jobcards.video import compress_video
@@ -423,18 +423,24 @@ def persist_submission(
 ):
     files = files or {}
     answers = answers or {}
-    def must_fill(field):
-        conditional = field.section == "If not OK" or field.field_key == "test_problem"
-        if skip_required or (conditional and str(answers.get("test_result") or "") != "NOT OK"):
-            return False
-        if require_all:
-            return True
-        return strict and field.required
     template = template or (replace.template if replace is not None else None) or (
         supersedes.template if supersedes else active_template(phase_code)
     )
     fields = list(template.active_fields())
     strict = status == JobCardSubmission.Status.SUBMITTED
+
+    def must_fill(field):
+        conditional = field.section == "If not OK" or field.field_key == "test_problem"
+        if skip_required or (conditional and str(answers.get("test_result") or "") != "NOT OK"):
+            return False
+        # Electrical: only OK / NOT OK radios are compulsory; value/remark text is optional.
+        if phase_code == PhaseCode.ELECTRICAL:
+            if field.field_type != FieldType.RADIO:
+                return False
+            return strict
+        if require_all:
+            return True
+        return strict and field.required
     existing = None
     previous_files = {}
     if replace is not None:

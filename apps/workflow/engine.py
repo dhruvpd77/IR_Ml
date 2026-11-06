@@ -572,8 +572,7 @@ def update_finished_qc(machine, user, answers, files=None, remarks="", require_a
 
 def reject_machine(machine, user, target_phase_code, reason, answers=None, files=None, attachment_files=None, remarks=""):
     reason = (reason or "").strip()
-    if not reason:
-        raise WorkflowError("Enter the reason for rejection.")
+    target_phase_code = (target_phase_code or "").strip()
     if not can_reject(user, machine):
         raise WorkflowError("You are not authorised to reject this machine.")
     with transaction.atomic():
@@ -582,6 +581,8 @@ def reject_machine(machine, user, target_phase_code, reason, answers=None, files
             raise WorkflowError("A draft machine cannot be rejected.")
         if ReworkRequest.objects.filter(machine=machine, status=ReworkRequest.Status.OPEN).exists():
             raise WorkflowError("This machine already has an open rework request.")
+        if not target_phase_code:
+            raise WorkflowError("Choose the department that must correct the machine.")
         target = _phase(target_phase_code)
         if target.code == PhaseCode.QC:
             raise WorkflowError("Choose the department that must correct the machine.")
@@ -685,7 +686,10 @@ def reject_machine(machine, user, target_phase_code, reason, answers=None, files
         notify_roles(
             [role] if role else [],
             title=f"Rework assigned for {machine.machine_id}",
-            body=f"{machine_label(machine)} was rejected to {target.name}. {reason}",
+            body=(
+                f"{machine_label(machine)} was rejected to {target.name}."
+                + (f" {reason}" if reason else "")
+            ),
             url=machine_path(machine),
             machine=machine,
             exclude_user=user,

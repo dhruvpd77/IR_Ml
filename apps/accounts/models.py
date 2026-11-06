@@ -29,6 +29,7 @@ class User(AbstractUser):
         TESTING = Roles.TESTING, "Testing"
         EOL = Roles.EOL, "EOL"
         QC = Roles.QC, "Quality Control"
+        GENERAL_USER = Roles.GENERAL_USER, "General User"
 
     role = models.CharField(max_length=32, choices=Role.choices, default=Role.PLANNING_DATA_ENTRY)
     department = models.ForeignKey(
@@ -57,6 +58,14 @@ class User(AbstractUser):
     @property
     def is_management(self):
         return self.is_superuser or self.role in Roles.MANAGEMENT
+
+    @property
+    def is_board_viewer(self):
+        return self.is_management or self.role == Roles.GENERAL_USER
+
+    @property
+    def is_general_user(self):
+        return self.role == Roles.GENERAL_USER
 
     @property
     def role_label(self):

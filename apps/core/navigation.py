@@ -3,13 +3,20 @@ from django.urls import reverse
 from core.constants import PHASE_ROLE, PhaseCode, Roles
 
 
+BOARD_URLS = {"core:monthly", "core:daily", "core:analytics", "core:slideshow"}
+
+
 def _visible(user, item):
+    if getattr(user, "is_general_user", False):
+        return item["url"] in BOARD_URLS
     if item.get("hide_management") and user.is_management:
         return False
     if item.get("super_admin") and not (user.is_superuser or user.role == Roles.SUPER_ADMIN):
         return False
     if item.get("management") and not user.is_management:
-        return False
+        roles = item.get("roles") or set()
+        if user.role not in roles:
+            return False
     roles = item.get("roles")
     if roles is None:
         return True
@@ -18,10 +25,11 @@ def _visible(user, item):
 
 NAV_ITEMS = [
     {"label": "Dashboard", "url": "core:dashboard", "icon": "layout-dashboard", "highlight": ["dashboard"], "hide_management": True},
-    {"label": "Monthly dashboard", "url": "core:monthly", "icon": "layout-dashboard", "management": True, "highlight": ["monthly"]},
-    {"label": "Daily dashboard", "url": "core:daily", "icon": "calendar-days", "management": True, "highlight": ["daily"]},
+    {"label": "Monthly dashboard", "url": "core:monthly", "icon": "layout-dashboard", "management": True, "roles": {Roles.GENERAL_USER}, "highlight": ["monthly"]},
+    {"label": "Daily dashboard", "url": "core:daily", "icon": "calendar-days", "management": True, "roles": {Roles.GENERAL_USER}, "highlight": ["daily"]},
     {"label": "Tentative planning", "url": "core:tentative", "icon": "calendar-range", "super_admin": True, "highlight": ["tentative"]},
-    {"label": "Machine Analytics", "url": "core:analytics", "icon": "layout-grid", "management": True, "highlight": ["analytics"]},
+    {"label": "Machine Analytics", "url": "core:analytics", "icon": "layout-grid", "management": True, "roles": {Roles.GENERAL_USER}, "highlight": ["analytics"]},
+    {"label": "Slideshow", "url": "core:slideshow", "icon": "monitor-play", "management": True, "roles": {Roles.GENERAL_USER}, "highlight": ["slideshow"]},
     {"label": "All Machines", "url": "machines:list", "icon": "cpu", "highlight": ["list", "detail", "edit", "create", "bulk"]},
     {"label": "Track", "url": "machines:track", "icon": "route", "management": True, "highlight": ["track"]},
     {"label": "Register Machine", "url": "machines:create", "icon": "plus-circle", "roles": {Roles.PLANNING_DATA_ENTRY}},
@@ -69,7 +77,7 @@ def navigation_for(user, match):
 
 
 def home_phase(user):
-    if user.is_management:
+    if user.is_management or getattr(user, "is_general_user", False):
         return None
     if user.role == Roles.PRODUCTION_LEADER:
         return PhaseCode.PRODUCTION
