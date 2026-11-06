@@ -1,8 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Machine analytics{% endblock %}
 {% block content %}
-<div class="page-head floor-headbar">
-  <h1>Machine analytics</h1>
+<div class="page-head floor-headbar" data-live-analytics data-live-seconds="30">
+  <div>
+    <h1>Machine analytics</h1>
+    <p class="live-badge" data-live-badge>Live · updates every 30 sec</p>
+  </div>
   {% include "includes/fullscreen.html" %}
 </div>
 <form class="dash-filters floor-filters" method="get">
@@ -32,26 +35,26 @@
   {% endfor %}
   <span class="heat-scale"><i class="heat-swatch heat-0"></i>Empty <i class="heat-swatch heat-1"></i>1 <i class="heat-swatch heat-2"></i>2 <i class="heat-swatch heat-3"></i>3–4 <i class="heat-swatch heat-4"></i>5+</span>
 </div>
-<div class="shop">
+<div class="shop" data-live-shop>
   <section class="shop-band">
     <header class="band-head band-assembly">
       <p>Assembly area</p>
-      <b>{{ assembly_count }}</b>
+      <b data-live-assembly-count>{{ assembly_count }}</b>
     </header>
-    <div class="assembly-lanes">
+    <div class="assembly-lanes" data-live-assembly>
       {% for line in lines %}
-        <div class="plan-lane">
+        <div class="plan-lane" data-line-code="{{ line.code }}">
           <div class="lane-name lane-{{ line.tone }}">
             <strong>{{ line.label }}</strong>
           </div>
           <div class="lane-squares">
             {% for box in line.boxes %}
-              <article class="station-square heat-{{ box.heat }}">
+              <article class="station-square heat-{{ box.heat }}" data-station-id="{{ box.station.pk }}">
                 <div class="cell-top">
                   <strong class="cell-name">{{ box.station.name }}</strong>
-                  <b>{{ box.count }}</b>
+                  <b data-box-count>{{ box.count }}</b>
                 </div>
-                <div class="dot-board">
+                <div class="dot-board" data-box-machines>
                   {% for machine in box.machines %}
                     {% include "includes/floor_machine.html" %}
                   {% endfor %}
@@ -67,16 +70,16 @@
   <section class="shop-band">
     <header class="band-head band-testing">
       <p>Testing area</p>
-      <b>{{ testing_count }}</b>
+      <b data-live-testing-count>{{ testing_count }}</b>
     </header>
-    <div class="test-row">
+    <div class="test-row" data-live-testing>
       {% for area in test_areas %}
-        <article class="test-rect {{ area.tone }} heat-{{ area.heat }}">
+        <article class="test-rect {{ area.tone }} heat-{{ area.heat }}" data-test-area="{{ area.name }}">
           <div class="cell-top">
             <strong class="cell-name">Testing area {{ forloop.counter }}</strong>
-            <b>{{ area.count }}</b>
+            <b data-box-count>{{ area.count }}</b>
           </div>
-          <div class="dot-board">
+          <div class="dot-board" data-box-machines>
             {% for machine in area.machines %}
               {% include "includes/floor_machine.html" %}
             {% endfor %}
@@ -89,10 +92,10 @@
   <section class="shop-band">
     <header class="band-head band-eol">
       <p>EOL</p>
-      <b>{{ eol_count }}</b>
+      <b data-live-eol-count>{{ eol_count }}</b>
     </header>
-    <article class="eol-rect heat-{{ eol_heat }}">
-      <div class="dot-board">
+    <article class="eol-rect heat-{{ eol_heat }}" data-live-eol>
+      <div class="dot-board" data-box-machines>
         {% for machine in eol_machines %}
           {% include "includes/floor_machine.html" %}
         {% endfor %}
@@ -100,4 +103,86 @@
     </article>
   </section>
 </div>
+{% endblock %}
+{% block extra_js %}
+<script>
+(() => {
+  const root = document.querySelector("[data-live-analytics]");
+  if (!root) return;
+
+  const esc = (value) => String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
+  const pillHtml = (machine) => {
+    const dots = (machine.dots || []).map((dot) => (
+      `<i class="live-dot" style="--c: ${esc(dot.color)}" title="${esc(dot.label)}"></i>`
+    )).join("");
+    const rework = machine.rework ? " is-rework" : "";
+    return `<a class="floor-pill tone-${esc(machine.tone)}${rework}" href="${esc(machine.url)}" title="${esc(machine.caption)}"><span class="spot-dots" aria-hidden="true">${dots}</span><span class="pill-id">${esc(machine.id)}</span></a>`;
+  };
+
+  const setHeat = (node, heat) => {
+    if (!node) return;
+    node.className = node.className.replace(/\bheat-\d\b/g, "").trim() + ` heat-${Number(heat) || 0}`;
+  };
+
+  const fillBox = (node, count, heat, machines) => {
+    if (!node) return;
+    const countNode = node.querySelector("[data-box-count]");
+    const board = node.querySelector("[data-box-machines]");
+    if (countNode) countNode.textContent = count;
+    setHeat(node, heat);
+    if (board) board.innerHTML = (machines || []).map(pillHtml).join("");
+  };
+
+  const applyLive = (payload) => {
+    const assemblyCount = document.querySelector("[data-live-assembly-count]");
+    const testingCount = document.querySelector("[data-live-testing-count]");
+    const eolCount = document.querySelector("[data-live-eol-count]");
+    if (assemblyCount) assemblyCount.textContent = payload.assembly_count;
+    if (testingCount) testingCount.textContent = payload.testing_count;
+    if (eolCount) eolCount.textContent = payload.eol_count;
+
+    (payload.lines || []).forEach((line) => {
+      (line.boxes || []).forEach((box) => {
+        const node = document.querySelector(`[data-station-id="${box.station_id}"]`);
+        fillBox(node, box.count, box.heat, box.machines);
+      });
+    });
+
+    (payload.test_areas || []).forEach((area) => {
+      const node = document.querySelector(`[data-test-area="${CSS.escape(area.name)}"]`);
+      fillBox(node, area.count, area.heat, area.machines);
+    });
+
+    const eol = document.querySelector("[data-live-eol]");
+    if (eol) {
+      setHeat(eol, payload.eol_heat);
+      const board = eol.querySelector("[data-box-machines]");
+      if (board) board.innerHTML = (payload.eol_machines || []).map(pillHtml).join("");
+    }
+
+    const badge = document.querySelector("[data-live-badge]");
+    if (badge && payload.updated) badge.textContent = `Live · updated ${payload.updated}`;
+  };
+
+  const seconds = Math.max(10, Number(root.dataset.liveSeconds || 30));
+  const poll = () => {
+    if (document.hidden) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("live", "1");
+    fetch(url.toString(), { headers: { "X-Requested-With": "fetch" }, credentials: "same-origin" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => { if (payload && payload.lines) applyLive(payload); })
+      .catch(() => {});
+  };
+  const timer = setInterval(poll, seconds * 1000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });
+  window.addEventListener("pagehide", () => clearInterval(timer));
+  poll();
+})();
+</script>
 {% endblock %}

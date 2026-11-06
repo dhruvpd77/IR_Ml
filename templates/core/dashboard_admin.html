@@ -2,11 +2,12 @@
 {% load mqms %}
 {% block title %}{{ dashboard_title }}{% endblock %}
 {% block content %}
-<div class="page-head">
+<div class="page-head" data-live-dashboard data-live-seconds="30">
   <div>
     <p class="eyebrow">{{ company_name }}</p>
     <h1>{{ dashboard_title }}</h1>
     <p class="muted">{{ dashboard_blurb }}</p>
+    <p class="live-badge" data-live-badge>Live · updates every 30 sec</p>
   </div>
   <div class="btn-row">
     {% include "includes/fullscreen.html" %}
@@ -39,13 +40,13 @@
   {% endif %}
 </form>
 {% include "includes/type_filter.html" %}
-<section class="stat-grid">
+<section class="stat-grid" data-live-cards>
   {% for card in stats.cards %}
-    {% if card.href %}<a class="stat tone-{{ card.tone }}" href="{{ card.href }}">{% else %}<article class="stat tone-{{ card.tone }}">{% endif %}
+    {% if card.href %}<a class="stat tone-{{ card.tone }}" href="{{ card.href }}" data-card-key="{{ card.key }}">{% else %}<article class="stat tone-{{ card.tone }}" data-card-key="{{ card.key }}">{% endif %}
       <span class="stat-mark" data-lucide="{{ card.icon }}"></span>
-      <span>{{ card.label }}</span>
-      <strong>{{ card.value }}</strong>
-      <em>{{ card.note|default:"View machines" }}</em>
+      <span data-card-label>{{ card.label }}</span>
+      <strong data-card-value>{{ card.value }}</strong>
+      <em data-card-note>{{ card.note|default:"View machines" }}</em>
     {% if card.href %}</a>{% else %}</article>{% endif %}
   {% endfor %}
 </section>
@@ -57,7 +58,7 @@
   <article class="card"><h3>14-day registrations and completions</h3><div class="chart-box"><canvas id="dailyChart"></canvas></div></article>
   <article class="card">
     <h3>Average cycle time</h3>
-    <p style="font-size:36px;margin:12px 0">{{ stats.charts.average_label }}</p>
+    <p style="font-size:36px;margin:12px 0" data-live-average>{{ stats.charts.average_label }}</p>
     <p class="muted">From registration to QC approval. Department completions are shown below.</p>
     <div class="chart-box" style="height:160px"><canvas id="performanceChart"></canvas></div>
   </article>
@@ -67,7 +68,7 @@
     <h3>Recent machines</h3>
     <div class="table-wrap" style="border:0">
       <table class="data-table">
-        <tbody>
+        <tbody data-live-recent>
           {% for machine in recent %}
             <tr>
               <td><a class="machine-link" href="{% url 'machines:detail' machine.machine_id %}">{{ machine.machine_id }}</a><br><span class="muted">{{ machine.planning.model_description }}</span></td>
@@ -83,7 +84,7 @@
   </article>
   <article class="card">
     <h3>Latest activity</h3>
-    <ul class="timeline">
+    <ul class="timeline" data-live-events>
       {% for event in events %}
         <li><span class="dot"></span><div><strong>{{ event|event_title }}</strong><br><span class="muted">{{ event.machine.machine_id }} · {{ event.actor.display_name|default:"System" }} · {{ event.created_at|date:"d M, H:i" }}</span></div></li>
       {% empty %}
@@ -97,29 +98,108 @@
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-const data = JSON.parse(document.getElementById("chart-data").textContent);
-const navy = "#0B1D36";
-const red = "#E10600";
-const blue = "#1D4ED8";
-new Chart(document.getElementById("phaseChart"), {
-  type: "bar",
-  data: { labels: data.phases.labels, datasets: [{ label: "Open", data: data.phases.open, backgroundColor: red }, { label: "Completed", data: data.phases.done, backgroundColor: navy }] },
-  options: { responsive: true, maintainAspectRatio: false }
-});
-new Chart(document.getElementById("priorityChart"), {
-  type: "doughnut",
-  data: { labels: data.priority.labels, datasets: [{ data: data.priority.values, backgroundColor: [red, "#D97706", "#94A3B8"] }] },
-  options: { responsive: true, maintainAspectRatio: false }
-});
-new Chart(document.getElementById("dailyChart"), {
-  type: "line",
-  data: { labels: data.daily.labels, datasets: [{ label: "Registered", data: data.daily.registered, borderColor: navy, tension: .3 }, { label: "QC released", data: data.daily.completed, borderColor: red, tension: .3 }] },
-  options: { responsive: true, maintainAspectRatio: false }
-});
-new Chart(document.getElementById("performanceChart"), {
-  type: "bar",
-  data: { labels: data.performance.labels, datasets: [{ data: data.performance.values, backgroundColor: navy }] },
-  options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
-});
+(() => {
+  const root = document.querySelector("[data-live-dashboard]");
+  const data = JSON.parse(document.getElementById("chart-data").textContent);
+  const navy = "#0B1D36";
+  const red = "#E10600";
+  const charts = {
+    phase: new Chart(document.getElementById("phaseChart"), {
+      type: "bar",
+      data: { labels: data.phases.labels, datasets: [{ label: "Open", data: data.phases.open, backgroundColor: red }, { label: "Completed", data: data.phases.done, backgroundColor: navy }] },
+      options: { responsive: true, maintainAspectRatio: false }
+    }),
+    priority: new Chart(document.getElementById("priorityChart"), {
+      type: "doughnut",
+      data: { labels: data.priority.labels, datasets: [{ data: data.priority.values, backgroundColor: [red, "#D97706", "#94A3B8"] }] },
+      options: { responsive: true, maintainAspectRatio: false }
+    }),
+    daily: new Chart(document.getElementById("dailyChart"), {
+      type: "line",
+      data: { labels: data.daily.labels, datasets: [{ label: "Registered", data: data.daily.registered, borderColor: navy, tension: .3 }, { label: "QC released", data: data.daily.completed, borderColor: red, tension: .3 }] },
+      options: { responsive: true, maintainAspectRatio: false }
+    }),
+    performance: new Chart(document.getElementById("performanceChart"), {
+      type: "bar",
+      data: { labels: data.performance.labels, datasets: [{ data: data.performance.values, backgroundColor: navy }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+    }),
+  };
+
+  const esc = (value) => String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
+  const applyLive = (payload) => {
+    payload.cards.forEach((card) => {
+      const node = document.querySelector(`[data-card-key="${card.key}"]`);
+      if (!node) return;
+      const value = node.querySelector("[data-card-value]");
+      const note = node.querySelector("[data-card-note]");
+      if (value) value.textContent = card.value;
+      if (note) note.textContent = card.note || "View machines";
+      if (card.href) node.setAttribute("href", card.href);
+    });
+    const average = document.querySelector("[data-live-average]");
+    if (average && payload.charts && payload.charts.average_label) average.textContent = payload.charts.average_label;
+    if (payload.charts) {
+      const c = payload.charts;
+      charts.phase.data.labels = c.phases.labels;
+      charts.phase.data.datasets[0].data = c.phases.open;
+      charts.phase.data.datasets[1].data = c.phases.done;
+      charts.phase.update("none");
+      charts.priority.data.labels = c.priority.labels;
+      charts.priority.data.datasets[0].data = c.priority.values;
+      charts.priority.update("none");
+      charts.daily.data.labels = c.daily.labels;
+      charts.daily.data.datasets[0].data = c.daily.registered;
+      charts.daily.data.datasets[1].data = c.daily.completed;
+      charts.daily.update("none");
+      charts.performance.data.labels = c.performance.labels;
+      charts.performance.data.datasets[0].data = c.performance.values;
+      charts.performance.update("none");
+    }
+    const recent = document.querySelector("[data-live-recent]");
+    if (recent) {
+      if (!payload.recent.length) {
+        recent.innerHTML = '<tr><td class="empty">No machines registered yet.</td></tr>';
+      } else {
+        recent.innerHTML = payload.recent.map((item) => (
+          `<tr><td><a class="machine-link" href="${esc(item.url)}">${esc(item.id)}</a><br><span class="muted">${esc(item.model)}</span></td><td>${esc(item.pipeline)}</td><td>${esc(item.status)}</td></tr>`
+        )).join("");
+      }
+    }
+    const events = document.querySelector("[data-live-events]");
+    if (events) {
+      if (!payload.events.length) {
+        events.innerHTML = "<li>No workflow activity yet.</li>";
+      } else {
+        events.innerHTML = payload.events.map((item) => (
+          `<li><span class="dot"></span><div><strong>${esc(item.title)}</strong><br><span class="muted">${esc(item.detail)}</span></div></li>`
+        )).join("");
+      }
+    }
+    const badge = document.querySelector("[data-live-badge]");
+    if (badge && payload.updated) badge.textContent = `Live · updated ${payload.updated}`;
+  };
+
+  if (!root) return;
+  const seconds = Math.max(10, Number(root.dataset.liveSeconds || 30));
+  const poll = () => {
+    if (document.hidden) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("live", "1");
+    fetch(url.toString(), { headers: { "X-Requested-With": "fetch" }, credentials: "same-origin" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => { if (payload && payload.cards) applyLive(payload); })
+      .catch(() => {});
+  };
+  const timer = setInterval(poll, seconds * 1000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });
+  window.addEventListener("pagehide", () => clearInterval(timer));
+  poll();
+})();
 </script>
 {% endblock %}

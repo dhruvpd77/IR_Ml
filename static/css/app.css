@@ -270,6 +270,33 @@ img, svg, canvas, table { max-width: 100%; }
 .fs-brand img { height: 46px; width: auto; object-fit: contain; }
 .fs-brand strong { display: block; color: #0b1d36; letter-spacing: .04em; }
 .fs-brand time { font-variant-numeric: tabular-nums; font-weight: 800; color: #b42318; font-size: 22px; }
+.live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.live-badge::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, .18);
+  animation: live-pulse 1.6s ease-in-out infinite;
+}
+@keyframes live-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.25); opacity: .7; }
+}
 .dash-filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 0 0 14px; }
 .dash-filters label { display: grid; gap: 4px; font-size: 12px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: #64748b; }
 .dash-filters select, .dash-filters input { border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; font-weight: 800; color: #0b1d36; background: white; min-width: 180px; }

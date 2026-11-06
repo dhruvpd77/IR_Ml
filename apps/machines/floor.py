@@ -1,6 +1,7 @@
 """Shop-floor lines and the station board used by location pickers and analytics."""
 
 from django.db.models import Q
+from django.urls import reverse
 
 from core.constants import TEST_AREAS, MachineStatus, PhaseCode, PhaseStatus, ShopLine
 from machines.models import Machine, ProductionStation
@@ -200,4 +201,57 @@ def floor_board(start=None, end=None, on_date=None, shift=""):
         "eol_heat": _heat(len(eol)),
         "on_floor": assembly_count + testing_count + len(eol),
         "legend": LEGEND,
+    }
+
+
+def _chip_payload(chip):
+    return {
+        "id": chip["id"],
+        "url": reverse("machines:detail", args=[chip["id"]]),
+        "tone": chip["tone"],
+        "rework": chip["rework"],
+        "caption": chip["caption"],
+        "dots": chip["dots"],
+    }
+
+
+def floor_board_payload(start=None, end=None, on_date=None, shift=""):
+    """JSON-ready shop floor snapshot for live analytics refresh."""
+    board = floor_board(start=start, end=end, on_date=on_date, shift=shift)
+    return {
+        "assembly_count": board["assembly_count"],
+        "testing_count": board["testing_count"],
+        "eol_count": board["eol_count"],
+        "eol_heat": board["eol_heat"],
+        "on_floor": board["on_floor"],
+        "lines": [
+            {
+                "code": line["code"],
+                "label": line["label"],
+                "tone": line["tone"],
+                "count": line["count"],
+                "boxes": [
+                    {
+                        "station_id": box["station"].pk,
+                        "station_name": box["station"].name,
+                        "count": box["count"],
+                        "heat": box["heat"],
+                        "machines": [_chip_payload(chip) for chip in box["machines"]],
+                    }
+                    for box in line["boxes"]
+                ],
+            }
+            for line in board["lines"]
+        ],
+        "test_areas": [
+            {
+                "name": area["name"],
+                "tone": area["tone"],
+                "count": area["count"],
+                "heat": area["heat"],
+                "machines": [_chip_payload(chip) for chip in area["machines"]],
+            }
+            for area in board["test_areas"]
+        ],
+        "eol_machines": [_chip_payload(chip) for chip in board["eol_machines"]],
     }

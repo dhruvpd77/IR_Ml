@@ -4,10 +4,11 @@ from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import Http404, HttpResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.html import strip_tags
 
 from accounts.decorators import management_required, super_admin_required
 from accounts.permissions import can_operate_phase
@@ -23,7 +24,7 @@ from core.stats import (
     machines_for_department_card,
     scoped_machines,
 )
-from machines.floor import floor_board
+from machines.floor import floor_board, floor_board_payload
 from machines.forms import SHIFT_CHOICES, TYPE_CHOICES
 from machines.models import MonthlyTentativePlan
 from machines.services import visible_machines
@@ -152,6 +153,10 @@ def machine_analytics(request):
         if parsed:
             start, end = month_bounds(*parsed)
             month_value = f"{parsed[0]:04d}-{parsed[1]:02d}"
+    if request.GET.get("live") == "1":
+        payload = floor_board_payload(start=start, end=end, on_date=on_date, shift=shift)
+        payload["updated"] = timezone.localtime().strftime("%d %b %Y %H:%M:%S")
+        return JsonResponse(payload)
     context = floor_board(start=start, end=end, on_date=on_date, shift=shift)
     context.update(
         {
@@ -160,6 +165,7 @@ def machine_analytics(request):
             "selected_month": month_value,
             "selected_date": day_value,
             "selected_shift": shift,
+            "live_refresh": True,
         }
     )
     return render(request, "core/analytics.html", context)
@@ -277,30 +283,74 @@ def _render_management_dashboard(request, mode):
             card["href"] = ""
         else:
             card["href"] = f"{reverse('core:dashboard_card', args=[card['key']])}?{query}"
-    return render(
-        request,
-        "core/dashboard_admin.html",
-        {
-            "stats": stats,
-            "recent": recent,
-            "events": WorkflowEvent.objects.select_related("machine", "actor", "phase").filter(machine__in=machines.values("pk"))[:10],
-            "machine_type": machine_type,
-            "machine_types": TYPE_CHOICES,
-            "shifts": SHIFT_CHOICES,
-            "selected_shift": shift,
-            "months": month_options(),
-            "selected_month": month_value,
-            "selected_date": day_value,
-            "mode": mode,
-            "dashboard_title": "Monthly dashboard" if mode == "monthly" else "Daily dashboard",
-            "dashboard_blurb": (
-                "Tentative plan for the selected month, machines registered by the planning team, and where those machines are now."
-                if mode == "monthly"
-                else "Machines registered on the selected date. Shift is the 1st or 2nd shift chosen when the machine was registered."
-            ),
-            "filter_keep": dashboard_query(month=month_value, day=day_value, shift=shift),
-        },
+    events = list(
+        WorkflowEvent.objects.select_related("machine", "actor", "phase")
+        .filter(machine__in=machines.values("pk"))[:10]
     )
+    context = {
+        "stats": stats,
+        "recent": recent,
+        "events": events,
+        "machine_type": machine_type,
+        "machine_types": TYPE_CHOICES,
+        "shifts": SHIFT_CHOICES,
+        "selected_shift": shift,
+        "months": month_options(),
+        "selected_month": month_value,
+        "selected_date": day_value,
+        "mode": mode,
+        "dashboard_title": "Monthly dashboard" if mode == "monthly" else "Daily dashboard",
+        "dashboard_blurb": (
+            "Tentative plan for the selected month, machines registered by the planning team, and where those machines are now."
+            if mode == "monthly"
+            else "Machines registered on the selected date. Shift is the 1st or 2nd shift chosen when the machine was registered."
+        ),
+        "filter_keep": dashboard_query(month=month_value, day=day_value, shift=shift),
+        "live_refresh": True,
+    }
+    if request.GET.get("live") == "1":
+        from core.templatetags.mqms import event_title
+
+        return JsonResponse(
+            {
+                "cards": [
+                    {
+                        "key": card["key"],
+                        "label": card["label"],
+                        "value": card["value"],
+                        "note": card.get("note") or "View machines",
+                        "href": card.get("href") or "",
+                        "tone": card.get("tone") or "navy",
+                        "icon": card.get("icon") or "layers",
+                    }
+                    for card in stats["cards"]
+                ],
+                "charts": stats["charts"],
+                "recent": [
+                    {
+                        "id": machine.machine_id,
+                        "model": machine.planning.model_description if hasattr(machine, "planning") else "",
+                        "pipeline": machine.pipeline,
+                        "status": machine.status_label,
+                        "url": reverse("machines:detail", args=[machine.machine_id]),
+                    }
+                    for machine in recent
+                ],
+                "events": [
+                    {
+                        "title": strip_tags(str(event_title(event))),
+                        "detail": (
+                            f"{event.machine.machine_id} · "
+                            f"{(event.actor.display_name if event.actor_id else 'System')} · "
+                            f"{timezone.localtime(event.created_at).strftime('%d %b, %H:%M')}"
+                        ),
+                    }
+                    for event in events
+                ],
+                "updated": timezone.localtime().strftime("%d %b %Y %H:%M:%S"),
+            }
+        )
+    return render(request, "core/dashboard_admin.html", context)
 
 
 @management_required
