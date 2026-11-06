@@ -110,11 +110,8 @@ def fill(request, phase_code, machine_id):
         remarks = request.POST.get("remarks", "")
         corrective = request.POST.get("corrective_action", "")
         action = request.POST.get("action") or "submit"
-        skip_required = action in {"submit", "approve"} and request.user.is_management
-        if action == "reject" or skip_required:
-            require_all = False
-        else:
-            require_all = True
+        skip_required = action in {"submit", "approve", "update"} and request.user.is_management
+        require_all = action in {"submit", "approve", "update"} and not skip_required
         area = (request.POST.get("test_area") or "").strip()
         chosen_area = area
         test_area_error = False
@@ -371,7 +368,13 @@ def attachment(request, pk):
     if not can_view_machine(request.user, item.machine):
         raise PermissionDenied
     inline = item.kind in {MachineAttachment.Kind.IMAGE, MachineAttachment.Kind.VIDEO}
-    return FileResponse(item.file.open("rb"), as_attachment=not inline, filename=item.original_name or "attachment")
+    handle = item.file.open("rb")
+    response = FileResponse(handle, as_attachment=not inline, filename=item.original_name or "attachment")
+    if item.kind == MachineAttachment.Kind.VIDEO:
+        response["Content-Type"] = "video/mp4"
+    elif item.kind == MachineAttachment.Kind.IMAGE:
+        response["Content-Type"] = "image/jpeg"
+    return response
 
 
 @management_required

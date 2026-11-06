@@ -27,7 +27,7 @@ from core.constants import (
     Roles,
 )
 from jobcards.models import JobCardSubmission, MachineAttachment
-from jobcards.services import JobCardError, persist_submission, qc_card_template
+from jobcards.services import MISSING, JobCardError, persist_submission, qc_card_template
 from machines.models import Machine
 from notifications.services import machine_label, machine_path, notify_roles
 from rework.models import ReworkAction, ReworkRequest
@@ -360,8 +360,7 @@ def _job_card(machine, user, phase_code, answers, files, remarks, corrective_act
         phase = _phase(phase_code)
         state = _state(machine, phase)
         _require_open(state, phase)
-        if not as_draft and state.rework_open and not (corrective_action or "").strip():
-            raise WorkflowError("Describe the corrective action before submitting this rework.")
+        corrective_missing = not as_draft and state.rework_open and not (corrective_action or "").strip()
         try:
             submission = persist_submission(
                 machine=machine,
@@ -376,8 +375,14 @@ def _job_card(machine, user, phase_code, answers, files, remarks, corrective_act
                 require_all=require_all,
                 skip_required=skip_required,
             )
-        except JobCardError:
+        except JobCardError as exc:
+            if corrective_missing:
+                errors = dict(exc.field_errors or {})
+                errors["corrective_action"] = MISSING
+                raise JobCardError("Review the highlighted job card fields.", errors) from exc
             raise
+        if corrective_missing:
+            raise JobCardError("Review the highlighted job card fields.", {"corrective_action": MISSING})
         if as_draft:
             log_audit(user, "jobcard.draft", instance=submission)
             return machine, submission

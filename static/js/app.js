@@ -163,6 +163,58 @@ document.addEventListener("DOMContentLoaded", () => {
       syncTestReports(clone);
     });
   }
+  document.querySelectorAll("form[data-require-all]").forEach((form) => {
+    const boxFor = (field) => field.closest(".check-row, .elec-row > div, .field") || field.parentElement;
+    const mark = (box) => {
+      if (!box || box.closest("[hidden]")) return false;
+      box.classList.add("is-missing");
+      if (!box.querySelector(".field-error")) {
+        const note = document.createElement("p");
+        note.className = "field-error";
+        note.dataset.clientError = "1";
+        note.textContent = "This field is missing.";
+        box.appendChild(note);
+      }
+      return true;
+    };
+    form.addEventListener("submit", (event) => {
+      const submitter = event.submitter;
+      if (!submitter || !["submit", "approve", "update"].includes(submitter.value)) return;
+      form.querySelectorAll("[data-client-error]").forEach((node) => node.remove());
+      form.querySelectorAll(".is-missing").forEach((node) => node.classList.remove("is-missing"));
+      const seen = new Set();
+      let first = null;
+      const flag = (box) => {
+        if (!box || seen.has(box)) return;
+        seen.add(box);
+        if (mark(box) && !first) first = box;
+      };
+      form.querySelectorAll("textarea, select, input").forEach((field) => {
+        if (field.disabled || field.closest("[hidden]")) return;
+        if (field.type === "hidden" || field.type === "file" || field.type === "button" || field.type === "submit") return;
+        const box = boxFor(field);
+        if (field.type === "radio") {
+          const chosen = form.querySelector(`input[type="radio"][name="${CSS.escape(field.name)}"]:checked`);
+          if (!chosen) flag(box);
+          return;
+        }
+        if (field.type === "checkbox") {
+          if (!field.checked) flag(box);
+          return;
+        }
+        if (!String(field.value || "").trim()) flag(box);
+      });
+      form.querySelectorAll("[data-video-box]").forEach((box) => {
+        if (!box.querySelector("[data-video-clip]")) flag(box.closest(".check-row, .field") || box);
+      });
+      form.querySelectorAll("[data-photo-box]").forEach((box) => {
+        if (!box.querySelector("[data-photo-clip]")) flag(box.closest(".field") || box);
+      });
+      if (!first) return;
+      event.preventDefault();
+      first.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  });
   syncInspectionDates(document);
   syncTestReports(document);
   syncTestResult();

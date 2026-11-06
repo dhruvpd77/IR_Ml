@@ -21,14 +21,14 @@
       {% endfor %}
     </section>
   </div>
-  <form method="post" enctype="multipart/form-data" class="card" {% if is_qc and editable and not qc_edit %}data-confirm="Record this QC decision?"{% endif %}>
+  <form method="post" enctype="multipart/form-data" class="card" {% if editable and not request.user.is_management %}data-require-all="1"{% endif %} {% if is_qc and editable and not qc_edit %}data-confirm="Record this QC decision?"{% endif %}>
     {% csrf_token %}
     {% if not editable %}
       <div class="message message-warning">This phase is not open for your submission. Previous records stay available below.</div>
     {% endif %}
     {% if rework_open %}
       <div class="message message-error">This machine was returned for rework. Describe the corrective action before submitting.{% if open_rework %} {{ open_rework.reason }}{% endif %}</div>
-      <label class="field"><span class="field-label">Corrective action</span><textarea class="field-input" name="corrective_action" rows="3" {% if not editable %}disabled{% endif %}></textarea></label>
+      <label class="field {% if field_errors.corrective_action %}is-missing{% endif %}"><span class="field-label">Corrective action</span><textarea class="field-input" name="corrective_action" rows="3" {% if not editable %}disabled{% endif %}></textarea>{% if field_errors.corrective_action %}<p class="field-error">This field is missing.</p>{% endif %}</label>
     {% endif %}
     {% for group in groups %}
       <h3 class="section-title">{{ group.name }}</h3>
