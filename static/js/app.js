@@ -626,7 +626,7 @@ function bindInspectionVideoBox(box, options = {}) {
       result.files = data.files;
     }
     if (!selected.length) {
-      say("Open the camera for a live preview, press Start recording when ready (up to 2 minutes), or choose from gallery. Every clip is compressed before it is stored.");
+      say("Open the camera for a live preview, press Start recording when ready (camera up to 2 minutes), or choose any length from gallery. Every clip is compressed before it is stored.");
     } else if (ajaxUpload) {
       say(`${selected.length} video${selected.length === 1 ? "" : "s"} waiting. Press Upload video — compression runs while uploading.`);
     } else {
@@ -662,11 +662,6 @@ function bindInspectionVideoBox(box, options = {}) {
     const already = saved ? saved.querySelectorAll("[data-video-clip]").length : 0;
     if (already + selected.length >= maxClips) {
       say(`You can keep up to ${maxClips} videos.`);
-      return;
-    }
-    const duration = await readVideoDuration(file);
-    if (duration > MEDIA_MAX_SECONDS + 1) {
-      say(`Keep each video within 2 minutes. This clip is about ${Math.ceil(duration)} seconds.`);
       return;
     }
     selected.push(file);
