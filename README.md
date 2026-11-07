@@ -1,4 +1,4 @@
-# Ingersoll Rand MQMS
+# Ingersoll Rand ROTARY
 
 Machine Production Tracking and Quality Management System. One machine keeps one digital record from planning data entry through planner, production release, parallel assembly and electrical, testing, end of line, and final QC.
 

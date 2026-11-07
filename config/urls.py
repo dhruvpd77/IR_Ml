@@ -5,8 +5,8 @@ from django.urls import include, path
 
 from core import views as core_views
 
-admin.site.site_header = "Ingersoll Rand MQMS"
-admin.site.site_title = "IR MQMS"
+admin.site.site_header = "Ingersoll Rand ROTARY"
+admin.site.site_title = "IR Rotary"
 admin.site.index_title = "Administration"
 
 urlpatterns = [

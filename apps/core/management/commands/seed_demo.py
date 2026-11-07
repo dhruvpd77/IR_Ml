@@ -119,7 +119,7 @@ class Command(BaseCommand):
         else:
             self.stdout.write("Machines are already in this database, so no extra fake records were added.")
             self.stdout.write("Run python manage.py seed_demo --fill to add the missing demo machines.")
-        self.stdout.write(self.style.SUCCESS("MQMS demo data is ready."))
+        self.stdout.write(self.style.SUCCESS("ROTARY demo data is ready."))
         self.stdout.write(f"Password for every demo account: {PASSWORD}")
         self.stdout.write("Super admin: superadmin    Admin: admin")
         self.stdout.write("planner1 assigns the serial number and the station. Other phases have two users, for example assembly1 and assembly2.")

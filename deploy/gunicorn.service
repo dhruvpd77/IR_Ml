@@ -1,5 +1,5 @@
 [Unit]
-Description=Ingersoll Rand MQMS
+Description=Ingersoll Rand ROTARY
 After=network.target
 
 [Service]

@@ -1,5 +1,5 @@
-/* IR MQMS service worker — offline shell + installable PWA */
-const CACHE = "ir-mqms-v2";
+/* IR Rotary service worker — offline shell + installable PWA */
+const CACHE = "ir-rotary-v1";
 const PRECACHE = [
   "/",
   "/manifest.webmanifest",

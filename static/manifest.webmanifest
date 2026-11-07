@@ -1,7 +1,7 @@
 {
-  "name": "Ingersoll Rand Production MQMS",
-  "short_name": "IR MQMS",
-  "description": "Ingersoll Rand production machine tracking for Naroda.",
+  "name": "Ingersoll Rand Production ROTARY",
+  "short_name": "IR Rotary",
+  "description": "Ingersoll Rand rotary production machine tracking for Naroda.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

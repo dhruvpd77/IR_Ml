@@ -9,9 +9,9 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="IR MQMS">
-  <meta name="application-name" content="IR MQMS">
-  <title>{% block title %}MQMS{% endblock %} · Ingersoll Rand</title>
+  <meta name="apple-mobile-web-app-title" content="IR Rotary">
+  <meta name="application-name" content="IR Rotary">
+  <title>{% block title %}ROTARY{% endblock %} · Ingersoll Rand</title>
   <link rel="manifest" href="{% url 'web_manifest' %}">
   <link rel="icon" href="{% static 'img/icons/icon-192.png' %}">
   <link rel="apple-touch-icon" href="{% static 'img/icons/icon-180.png' %}">
@@ -26,7 +26,7 @@
 <body class="{% if embed_mode %}is-embed{% endif %}">
   <div id="appSplash" class="app-splash" aria-hidden="true">
     <img src="{% static 'img/ir-logo.jpg' %}" alt="Ingersoll Rand">
-    <p>Production MQMS</p>
+    <p>Production ROTARY</p>
   </div>
   <div id="shell" class="shell{% if embed_mode %} is-embed{% endif %}">
     {% if not embed_mode %}
@@ -54,7 +54,7 @@
       </main>
     </div>
   </div>
-  <button id="pwaInstall" class="pwa-install" type="button" hidden>Install IR MQMS app</button>
+  <button id="pwaInstall" class="pwa-install" type="button" hidden>Install IR Rotary app</button>
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="{% static 'js/app.js' %}?v=17"></script>
   <script>

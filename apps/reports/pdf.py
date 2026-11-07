@@ -122,7 +122,7 @@ def table_pdf(title, subtitle, headers, rows):
     )
     document.build(
         [
-            Paragraph(_rich("Ingersoll Rand · MQMS"), styles["IRSub"]),
+            Paragraph(_rich("Ingersoll Rand · ROTARY"), styles["IRSub"]),
             Paragraph(_rich(title, bold=True), styles["IRTitle"]),
             Paragraph(_rich(subtitle), styles["IRSub"]),
             table,
