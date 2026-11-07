@@ -22,6 +22,7 @@ urlpatterns = [
     path("track/", views.machine_track, name="track"),
     path("<str:machine_id>/pass/<str:phase_code>/", views.pass_phase_view, name="pass_phase"),
     path("<str:machine_id>/test-area/", views.set_test_area, name="set_test_area"),
+    path("<str:machine_id>/probe/", views.machine_detail_probe, name="detail_probe"),
     path("<str:machine_id>/", views.machine_detail, name="detail"),
     path("<str:machine_id>/edit/", views.machine_edit, name="edit"),
     path("<str:machine_id>/delete/", views.machine_delete, name="delete"),
