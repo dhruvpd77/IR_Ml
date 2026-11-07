@@ -328,24 +328,6 @@ function formatMediaClock(total) {
   return `${minutes}:${seconds}`;
 }
 
-function readVideoDuration(file) {
-  return new Promise((resolve) => {
-    const url = URL.createObjectURL(file);
-    const probe = document.createElement("video");
-    probe.preload = "metadata";
-    probe.onloadedmetadata = () => {
-      const duration = Number(probe.duration) || 0;
-      URL.revokeObjectURL(url);
-      resolve(Number.isFinite(duration) ? duration : 0);
-    };
-    probe.onerror = () => {
-      URL.revokeObjectURL(url);
-      resolve(0);
-    };
-    probe.src = url;
-  });
-}
-
 async function compressPhotoFile(file, maxEdge = 1280, quality = 0.55) {
   if (!file || !file.type.startsWith("image/")) return file;
   try {
