@@ -27,15 +27,12 @@ def can_view_machine(user, machine):
 
 
 def can_delete_machine(user, machine):
-    if not user.is_authenticated:
+    """Admin and Planning can remove a registered machine from the system."""
+    if not user.is_authenticated or not getattr(machine, "pk", None):
         return False
     if user.is_management:
         return True
-    return (
-        user.role == Roles.PLANNING_DATA_ENTRY
-        and machine.created_by_id == user.id
-        and machine.status == "DRAFT"
-    )
+    return user.role == Roles.PLANNING_DATA_ENTRY
 
 
 def can_edit_planning(user, machine):
