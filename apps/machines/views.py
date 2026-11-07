@@ -233,6 +233,26 @@ def machine_delete(request, machine_id):
 @login_required
 def machine_detail(request, machine_id):
     machine = _machine_or_404(request.user, machine_id)
+    try:
+        return _machine_detail(request, machine)
+    except Exception:
+        import logging
+        import traceback
+
+        logging.getLogger("machines.detail").exception("machine_detail failed for %s", machine_id)
+        # Temporary: show traceback so live PythonAnywhere 500s can be fixed quickly.
+        if request.user.is_authenticated:
+            from django.http import HttpResponse
+
+            return HttpResponse(
+                f"<pre>Machine detail error for {machine_id}\n\n{traceback.format_exc()}</pre>",
+                status=500,
+                content_type="text/html; charset=utf-8",
+            )
+        raise
+
+
+def _machine_detail(request, machine):
     submissions = machine.job_card_submissions.select_related("operator", "template").prefetch_related("responses__field", "attachments")
     reworks = machine.reworks.select_related("assigned_phase", "rejected_phase", "rejected_by").prefetch_related("actions")
     planning_state = machine.phase_states.filter(phase__code=PhaseCode.PLANNING).first()
