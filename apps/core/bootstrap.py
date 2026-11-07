@@ -155,7 +155,27 @@ def _ensure():
         if not template.fields.exists():
             _write_fields(template, spec["fields"])
     _upgrade_job_cards()
+    _ensure_waiting_phase_states()
     _close_passed_phases()
+
+
+def _ensure_waiting_phase_states():
+    """Machines registered before Waiting Area existed need a WAITING phase row."""
+    from core.constants import PhaseCode, PhaseStatus
+    from machines.models import Machine
+    from workflow.models import MachinePhaseState
+
+    waiting = ProductionPhase.objects.filter(code=PhaseCode.WAITING, is_active=True).first()
+    if waiting is None:
+        return
+    missing = Machine.objects.exclude(phase_states__phase=waiting).values_list("pk", flat=True)
+    MachinePhaseState.objects.bulk_create(
+        [
+            MachinePhaseState(machine_id=machine_id, phase=waiting, status=PhaseStatus.PENDING, cycle=1)
+            for machine_id in missing
+        ],
+        ignore_conflicts=True,
+    )
 
 
 def _field_options(field_type, extra):

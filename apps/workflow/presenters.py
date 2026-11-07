@@ -332,10 +332,19 @@ def _section_groups(items):
     return groups
 
 
+def _local(value):
+    if not value:
+        return None
+    if timezone.is_naive(value):
+        value = timezone.make_aware(value, timezone.get_current_timezone())
+    return timezone.localtime(value)
+
+
 def _stamp(submission):
     if submission is None:
         return "Not submitted"
-    when = timezone.localtime(submission.submitted_at).strftime("%d %b %Y %H:%M") if submission.submitted_at else "Saved"
+    local = _local(submission.submitted_at)
+    when = local.strftime("%d %b %Y %H:%M") if local else "Saved"
     who = submission.operator.display_name if submission.operator_id else "—"
     return f"{who} · {when} · cycle {submission.cycle}"
 
@@ -371,7 +380,8 @@ def _sheet_phase(code, title, color, submission, earlier):
 def job_card_view(machine, submissions, steps, reworks=None, until=None):
     planning = machine.planning
     planning_date = planning.submitted_at or machine.created_at
-    date_text = timezone.localtime(planning_date).strftime("%d-%b-%Y") if planning_date else "—"
+    local_planning = _local(planning_date)
+    date_text = local_planning.strftime("%d-%b-%Y") if local_planning else "—"
     inspection = planning.customer_inspection or "—"
     if planning.customer_inspection_date:
         inspection = f"{inspection} · {planning.customer_inspection_date.strftime('%d %b %Y')}"
