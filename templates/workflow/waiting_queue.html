@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% load mqms %}
+{% block title %}Waiting Area{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Testing intake</p>
+    <h1>Waiting Area</h1>
+    <p class="muted">Machines that finished Assembly and Electrical wait here until a test bay is free. Assign a testing area to move a machine into Testing.</p>
+  </div>
+</div>
+<form method="get" class="filters">
+  <input class="field-input" name="q" value="{{ query }}" placeholder="Search machine or work order">
+  <button class="btn-ghost" type="submit">Search</button>
+</form>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>View</th>
+        <th>Machine</th>
+        <th>Work order</th>
+        <th>Model</th>
+        <th>Serial</th>
+        <th>Priority</th>
+        <th>Assign test bay</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for machine in page %}
+        <tr>
+          <td><a class="btn-ghost btn-view" href="{% url 'machines:detail' machine.machine_id %}">View</a></td>
+          <td><a class="machine-link" href="{% url 'machines:detail' machine.machine_id %}">{{ machine.machine_id }}</a></td>
+          <td>{{ machine.planning.work_order }}</td>
+          <td>{{ machine.planning.model_description }}</td>
+          <td>{{ machine.planner_serial|default:"—" }}</td>
+          <td><span class="{{ machine.priority|badge_class }}">{{ machine.priority_label }}</span></td>
+          <td>
+            {% if can_act %}
+              <form method="post" action="{% url 'machines:set_test_area' machine.machine_id %}" class="btn-row">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <select class="field-input" name="test_area" required>
+                  <option value="">Select test area</option>
+                  {% for area in test_areas %}
+                    <option value="{{ area }}">{{ area }}</option>
+                  {% endfor %}
+                </select>
+                <button class="btn-primary" type="submit">Send to Testing</button>
+              </form>
+            {% else %}
+              Waiting for bay
+            {% endif %}
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7" class="empty">No machines are waiting for a test bay.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% include "includes/pagination.html" %}
+{% endblock %}

@@ -78,7 +78,7 @@ def _ensure():
         description="Serial assignment is done by the production leader.",
     )
     for code, name, description, sequence, group, department_code in PHASE_DEFINITIONS:
-        ProductionPhase.objects.get_or_create(
+        phase, created = ProductionPhase.objects.get_or_create(
             code=code,
             defaults={
                 "name": name,
@@ -86,8 +86,33 @@ def _ensure():
                 "sequence": sequence,
                 "parallel_group": group,
                 "department": departments.get(department_code),
+                "is_active": True,
             },
         )
+        if created:
+            continue
+        updates = []
+        if phase.name != name:
+            phase.name = name
+            updates.append("name")
+        if phase.description != description:
+            phase.description = description
+            updates.append("description")
+        if phase.sequence != sequence:
+            phase.sequence = sequence
+            updates.append("sequence")
+        if phase.parallel_group != group:
+            phase.parallel_group = group
+            updates.append("parallel_group")
+        department = departments.get(department_code)
+        if department and phase.department_id != department.id:
+            phase.department = department
+            updates.append("department")
+        if not phase.is_active:
+            phase.is_active = True
+            updates.append("is_active")
+        if updates:
+            phase.save(update_fields=updates)
     serial = ProductionPhase.objects.filter(code="PLANNER").first()
     production = departments.get("PRODUCTION")
     if serial and production and (

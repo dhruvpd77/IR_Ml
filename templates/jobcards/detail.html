@@ -15,14 +15,14 @@
 </div>
 <section class="card">
   <span class="{{ submission.status|badge_class }}">{{ submission.get_status_display }}</span>
-  {% if submission.correction_reason %}<p>Correction reason: {{ submission.correction_reason }}</p>{% endif %}
   <table class="data-table">
     <tbody>
       {% for response in responses %}
-        <tr><th>{{ response.field.label }}</th><td>{{ response.display_value }}</td></tr>
+        <tr><th>{{ response.field.label }}</th><td {% if response.field.field_type == "long_text" or response.field.field_type == "remarks" %}class="comment-body"{% endif %}>{{ response.display_value }}</td></tr>
       {% endfor %}
-      {% if submission.remarks %}<tr><th>Remarks</th><td>{{ submission.remarks }}</td></tr>{% endif %}
-      {% if submission.corrective_action %}<tr><th>Corrective action</th><td>{{ submission.corrective_action }}</td></tr>{% endif %}
+      {% if submission.remarks %}<tr><th>Remarks</th><td class="comment-body">{{ submission.remarks }}</td></tr>{% endif %}
+      {% if submission.corrective_action %}<tr><th>Corrective action</th><td class="comment-body">{{ submission.corrective_action }}</td></tr>{% endif %}
+      {% if submission.correction_reason %}<tr><th>Correction reason</th><td class="comment-body">{{ submission.correction_reason }}</td></tr>{% endif %}
     </tbody>
   </table>
   {% for file in submission.attachments.all %}

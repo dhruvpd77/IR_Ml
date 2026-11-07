@@ -283,11 +283,14 @@ class Command(BaseCommand):
             return
         if not self._phase_done(machine, "ELECTRICAL"):
             machine = submit_job_card(machine, user, "ELECTRICAL", {}, remarks="Electrical complete.", skip_required=True)
-        if not machine.test_area:
-            machine.test_area = LINE_AREA.get(station.line, TEST_AREAS[0])
-            machine.save(update_fields=["test_area", "updated_at"])
         if level == "testing":
             return
+        from workflow.engine import assign_test_area
+
+        if not self._phase_done(machine, "WAITING") or machine.status == "IN_WAITING":
+            area = machine.test_area or LINE_AREA.get(station.line, TEST_AREAS[0])
+            assign_test_area(machine, user, area)
+            machine.refresh_from_db()
         if not self._phase_done(machine, "TESTING"):
             machine = submit_job_card(machine, user, "TESTING", {}, remarks="Test passed.", skip_required=True)
         if level == "eol":

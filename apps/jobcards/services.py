@@ -712,6 +712,82 @@ def submission_form_state(submission):
     return values, files
 
 
+def latest_phase_submission(machine, phase_code, *, before_cycle=None):
+    """Most recent submitted/draft card for this phase (used to prefill rework cycles)."""
+    query = JobCardSubmission.objects.filter(
+        machine=machine,
+        phase_code=phase_code,
+    ).exclude(status=JobCardSubmission.Status.SUPERSEDED)
+    if before_cycle is not None:
+        query = query.filter(cycle__lt=before_cycle)
+    return query.order_by("-cycle", "-revision", "-pk").first()
+
+
+def ensure_phase_draft(machine, user, phase_code, cycle):
+    """
+    Return the working draft for this phase/cycle.
+    On a new rework cycle, copy the previous answers/files so operators only change what needs fixing.
+    """
+    draft = (
+        JobCardSubmission.objects.filter(
+            machine=machine,
+            phase_code=phase_code,
+            cycle=cycle,
+            status=JobCardSubmission.Status.DRAFT,
+        )
+        .order_by("-pk")
+        .first()
+    )
+    if draft is not None:
+        return draft, False
+
+    prior = latest_phase_submission(machine, phase_code, before_cycle=cycle)
+    if prior is None:
+        return None, False
+
+    with transaction.atomic():
+        draft = JobCardSubmission.objects.create(
+            machine=machine,
+            template=prior.template,
+            phase_code=phase_code,
+            cycle=cycle,
+            revision=1,
+            status=JobCardSubmission.Status.DRAFT,
+            operator=user if getattr(user, "is_authenticated", False) else prior.operator,
+            remarks=prior.remarks or "",
+            corrective_action="",
+        )
+        for response in prior.responses.select_related("field").prefetch_related("attachments"):
+            cloned = JobCardResponse.objects.create(
+                submission=draft,
+                field=response.field,
+                value_text=response.value_text,
+                value_bool=response.value_bool,
+                value_decimal=response.value_decimal,
+                value_date=response.value_date,
+                value_time=response.value_time,
+                value_json=response.value_json,
+            )
+            for attachment in response.attachments.order_by("pk"):
+                MachineAttachment.objects.create(
+                    machine=machine,
+                    submission=draft,
+                    response=cloned,
+                    file=attachment.file.name if attachment.file else "",
+                    original_name=attachment.original_name,
+                    kind=attachment.kind,
+                    caption=attachment.caption,
+                    uploaded_by=user if getattr(user, "is_authenticated", False) else attachment.uploaded_by,
+                )
+        log_audit(
+            user,
+            "jobcard.prefill",
+            instance=draft,
+            changes={"from_cycle": prior.cycle, "from_submission": prior.pk},
+        )
+    return draft, True
+
+
 def answers_from_request(template, post, files):
     answers = {}
     uploads = {}

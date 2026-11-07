@@ -27,9 +27,9 @@ def rework_route(origin_code):
     """Phases after Production, ending with the origin (actual job card return)."""
     routes = {
         PhaseCode.ASSEMBLY: [PhaseCode.ASSEMBLY],
-        PhaseCode.TESTING: [PhaseCode.ASSEMBLY, PhaseCode.TESTING],
-        PhaseCode.EOL: [PhaseCode.ASSEMBLY, PhaseCode.TESTING, PhaseCode.EOL],
-        PhaseCode.QC: [PhaseCode.ASSEMBLY, PhaseCode.TESTING, PhaseCode.EOL, PhaseCode.QC],
+        PhaseCode.TESTING: [PhaseCode.ASSEMBLY, PhaseCode.WAITING, PhaseCode.TESTING],
+        PhaseCode.EOL: [PhaseCode.ASSEMBLY, PhaseCode.WAITING, PhaseCode.TESTING, PhaseCode.EOL],
+        PhaseCode.QC: [PhaseCode.ASSEMBLY, PhaseCode.WAITING, PhaseCode.TESTING, PhaseCode.EOL, PhaseCode.QC],
     }
     if origin_code not in routes:
         raise ReworkFlowError("Rework can be raised from Assembly, Testing, End of Line, or Quality.")
@@ -250,6 +250,10 @@ def advance_rework_after_phase(machine, user, completed_phase, resolution_commen
     next_phase = _phase(next_code)
     is_return = next_index == len(path) - 1
 
+    if next_code == PhaseCode.WAITING:
+        machine.test_area = ""
+        machine.save(update_fields=["test_area", "updated_at"])
+
     if is_return and next_code == rework.origin_code:
         # Return to the same cycle so the saved draft is still there.
         state = _state(machine, next_phase)
@@ -275,6 +279,7 @@ def advance_rework_after_phase(machine, user, completed_phase, resolution_commen
 
     role = {
         PhaseCode.ASSEMBLY: Roles.ASSEMBLY,
+        PhaseCode.WAITING: Roles.TESTING,
         PhaseCode.TESTING: Roles.TESTING,
         PhaseCode.EOL: Roles.EOL,
         PhaseCode.QC: Roles.QC,

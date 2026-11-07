@@ -8,6 +8,7 @@
   </div>
   {% include "includes/fullscreen.html" %}
 </div>
+
 <form class="dash-filters floor-filters" method="get">
   <label>Month
     <select name="month" onchange="this.form.date.value=''; this.form.submit()">
@@ -29,13 +30,21 @@
     </select>
   </label>
 </form>
+
 <div class="legend">
   {% for item in legend %}
     <span class="legend-item"><i class="live-dot" style="--c: {{ item.color }}"></i>{{ item.label }}</span>
   {% endfor %}
-  <span class="heat-scale"><i class="heat-swatch heat-0"></i>Empty <i class="heat-swatch heat-1"></i>1 <i class="heat-swatch heat-2"></i>2 <i class="heat-swatch heat-3"></i>3–4 <i class="heat-swatch heat-4"></i>5+</span>
+  <span class="heat-scale">
+    <i class="heat-swatch heat-0"></i>Empty
+    <i class="heat-swatch heat-1"></i>1
+    <i class="heat-swatch heat-2"></i>2
+    <i class="heat-swatch heat-3"></i>3–4
+    <i class="heat-swatch heat-4"></i>5+
+  </span>
 </div>
-<div class="shop" data-live-shop>
+
+<div class="shop shop-floor" data-live-shop>
   <section class="shop-band">
     <header class="band-head band-assembly">
       <p>Assembly area</p>
@@ -68,6 +77,29 @@
   </section>
 
   <section class="shop-band">
+    <header class="band-head band-waiting">
+      <p>Waiting Area</p>
+      <b data-live-waiting-count>{{ waiting_count }}</b>
+    </header>
+    <article class="waiting-rect heat-{{ waiting_heat }}" data-live-waiting>
+      <div class="waiting-mark" aria-hidden="true">
+        <i data-lucide="package"></i>
+      </div>
+      <div class="waiting-copy">
+        <strong>Waiting Area</strong>
+        <span>Machines awaiting next process (Testing)</span>
+      </div>
+      <div class="dot-board" data-box-machines>
+        {% for machine in waiting_machines %}
+          {% include "includes/floor_machine.html" %}
+        {% empty %}
+          <p class="floor-empty">No machines waiting</p>
+        {% endfor %}
+      </div>
+    </article>
+  </section>
+
+  <section class="shop-band">
     <header class="band-head band-testing">
       <p>Testing area</p>
       <b data-live-testing-count>{{ testing_count }}</b>
@@ -76,12 +108,17 @@
       {% for area in test_areas %}
         <article class="test-rect {{ area.tone }} heat-{{ area.heat }}" data-test-area="{{ area.name }}">
           <div class="cell-top">
-            <strong class="cell-name">Testing area {{ forloop.counter }}</strong>
+            <strong class="cell-name">
+              <i data-lucide="gauge" class="cell-icon"></i>
+              Testing area {{ forloop.counter }}
+            </strong>
             <b data-box-count>{{ area.count }}</b>
           </div>
           <div class="dot-board" data-box-machines>
             {% for machine in area.machines %}
               {% include "includes/floor_machine.html" %}
+            {% empty %}
+              <p class="floor-empty">Free bay</p>
             {% endfor %}
           </div>
         </article>
@@ -98,6 +135,8 @@
       <div class="dot-board" data-box-machines>
         {% for machine in eol_machines %}
           {% include "includes/floor_machine.html" %}
+        {% empty %}
+          <p class="floor-empty">EOL clear</p>
         {% endfor %}
       </div>
     </article>
@@ -129,44 +168,63 @@
     node.className = node.className.replace(/\bheat-\d\b/g, "").trim() + ` heat-${Number(heat) || 0}`;
   };
 
-  const fillBox = (node, count, heat, machines) => {
+  const fillBox = (node, count, heat, machines, emptyText) => {
     if (!node) return;
     const countNode = node.querySelector("[data-box-count]");
     const board = node.querySelector("[data-box-machines]");
     if (countNode) countNode.textContent = count;
     setHeat(node, heat);
-    if (board) board.innerHTML = (machines || []).map(pillHtml).join("");
+    if (board) {
+      board.innerHTML = (machines || []).length
+        ? (machines || []).map(pillHtml).join("")
+        : `<p class="floor-empty">${esc(emptyText || "Empty")}</p>`;
+    }
   };
 
   const applyLive = (payload) => {
-    const assemblyCount = document.querySelector("[data-live-assembly-count]");
-    const testingCount = document.querySelector("[data-live-testing-count]");
-    const eolCount = document.querySelector("[data-live-eol-count]");
-    if (assemblyCount) assemblyCount.textContent = payload.assembly_count;
-    if (testingCount) testingCount.textContent = payload.testing_count;
-    if (eolCount) eolCount.textContent = payload.eol_count;
+    const setText = (sel, value) => {
+      document.querySelectorAll(sel).forEach((node) => { node.textContent = value; });
+    };
+    setText("[data-live-assembly-count]", payload.assembly_count);
+    setText("[data-live-waiting-count]", payload.waiting_count);
+    setText("[data-live-testing-count]", payload.testing_count);
+    setText("[data-live-eol-count]", payload.eol_count);
 
     (payload.lines || []).forEach((line) => {
       (line.boxes || []).forEach((box) => {
-        const node = document.querySelector(`[data-station-id="${box.station_id}"]`);
-        fillBox(node, box.count, box.heat, box.machines);
+        fillBox(document.querySelector(`[data-station-id="${box.station_id}"]`), box.count, box.heat, box.machines, "");
       });
     });
 
+    const waiting = document.querySelector("[data-live-waiting]");
+    if (waiting) {
+      setHeat(waiting, payload.waiting_heat);
+      const board = waiting.querySelector("[data-box-machines]");
+      if (board) {
+        board.innerHTML = (payload.waiting_machines || []).length
+          ? (payload.waiting_machines || []).map(pillHtml).join("")
+          : `<p class="floor-empty">No machines waiting</p>`;
+      }
+    }
+
     (payload.test_areas || []).forEach((area) => {
-      const node = document.querySelector(`[data-test-area="${CSS.escape(area.name)}"]`);
-      fillBox(node, area.count, area.heat, area.machines);
+      fillBox(document.querySelector(`[data-test-area="${CSS.escape(area.name)}"]`), area.count, area.heat, area.machines, "Free bay");
     });
 
     const eol = document.querySelector("[data-live-eol]");
     if (eol) {
       setHeat(eol, payload.eol_heat);
       const board = eol.querySelector("[data-box-machines]");
-      if (board) board.innerHTML = (payload.eol_machines || []).map(pillHtml).join("");
+      if (board) {
+        board.innerHTML = (payload.eol_machines || []).length
+          ? (payload.eol_machines || []).map(pillHtml).join("")
+          : `<p class="floor-empty">EOL clear</p>`;
+      }
     }
 
     const badge = document.querySelector("[data-live-badge]");
     if (badge && payload.updated) badge.textContent = `Live · updated ${payload.updated}`;
+    if (window.lucide) window.lucide.createIcons();
   };
 
   const seconds = Math.max(10, Number(root.dataset.liveSeconds || 30));

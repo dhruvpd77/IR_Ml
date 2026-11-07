@@ -6,9 +6,11 @@ from django.urls import reverse
 from core.constants import TEST_AREAS, MachineStatus, PhaseCode, PhaseStatus, ShopLine
 from machines.models import Machine, ProductionStation
 
+
 LEGEND = (
     {"label": "Assembly", "color": "#2563eb"},
     {"label": "Electrical", "color": "#d97706"},
+    {"label": "Waiting", "color": "#b45309"},
     {"label": "Testing", "color": "#059669"},
     {"label": "End of line", "color": "#7c3aed"},
     {"label": "Rework", "color": "#ea580c"},
@@ -43,6 +45,8 @@ def _open_codes(machine):
 
 def _zone(machine):
     phase = machine.current_phase
+    if phase == PhaseCode.WAITING or machine.status == MachineStatus.IN_WAITING:
+        return "waiting"
     if phase == PhaseCode.TESTING or machine.status == MachineStatus.IN_TESTING:
         return "testing"
     if phase == PhaseCode.EOL or machine.status == MachineStatus.IN_EOL:
@@ -63,12 +67,14 @@ def _dots(machine, zone):
             dots.append({"label": "Assembly", "color": "#2563eb"})
         if PhaseCode.ELECTRICAL in open_codes:
             dots.append({"label": "Electrical", "color": "#d97706"})
+    elif zone == "waiting":
+        dots.append({"label": "Waiting", "color": "#b45309"})
     elif zone == "testing":
         dots.append({"label": "Testing", "color": "#059669"})
     elif zone == "eol":
         dots.append({"label": "End of line", "color": "#7c3aed"})
     if machine.is_under_rework:
-        dots.append({"label": "Rework", "color": "#ea580c"})
+        dots.append({"label": "Rework", "color": "#e10600"})
     if not dots:
         dots.append({"label": "At this station", "color": "#64748b"})
     return dots
@@ -103,6 +109,8 @@ def _chip(machine, zone):
     labels = {dot["label"] for dot in dots}
     if machine.is_under_rework:
         tone = "rework"
+    elif zone == "waiting":
+        tone = "waiting"
     elif zone == "testing":
         tone = "testing"
     elif zone == "eol":
@@ -131,19 +139,25 @@ def _chip(machine, zone):
 def floor_board(start=None, end=None, on_date=None, shift=""):
     machines = (
         Machine.objects.filter(
-            Q(status__in=[
-                MachineStatus.IN_PRODUCTION,
-                MachineStatus.IN_TESTING,
-                MachineStatus.IN_EOL,
-                MachineStatus.UNDER_REWORK,
-            ])
-            | Q(current_phase__in=[
-                PhaseCode.BUILD,
-                PhaseCode.ASSEMBLY,
-                PhaseCode.ELECTRICAL,
-                PhaseCode.TESTING,
-                PhaseCode.EOL,
-            ])
+            Q(
+                status__in=[
+                    MachineStatus.IN_PRODUCTION,
+                    MachineStatus.IN_WAITING,
+                    MachineStatus.IN_TESTING,
+                    MachineStatus.IN_EOL,
+                    MachineStatus.UNDER_REWORK,
+                ]
+            )
+            | Q(
+                current_phase__in=[
+                    PhaseCode.BUILD,
+                    PhaseCode.ASSEMBLY,
+                    PhaseCode.ELECTRICAL,
+                    PhaseCode.WAITING,
+                    PhaseCode.TESTING,
+                    PhaseCode.EOL,
+                ]
+            )
         )
         .select_related("planning", "station")
         .prefetch_related("phase_states__phase")
@@ -157,11 +171,14 @@ def floor_board(start=None, end=None, on_date=None, shift=""):
         machines = machines.filter(planning__shift=shift)
     by_station = {}
     by_area = {name: [] for name in TEST_AREAS}
+    waiting = []
     eol = []
     for machine in machines:
         zone = _zone(machine)
         if zone == "assembly":
             by_station.setdefault(machine.station_id, []).append(_chip(machine, zone))
+        elif zone == "waiting":
+            waiting.append(_chip(machine, zone))
         elif zone == "testing":
             area = _testing_area(machine)
             by_area[area or TEST_AREAS[0]].append(_chip(machine, zone))
@@ -187,19 +204,29 @@ def floor_board(start=None, end=None, on_date=None, shift=""):
             }
         )
     test_areas = [
-        {"name": name, "tone": _TEST_TONE[name], "machines": by_area[name], "count": len(by_area[name]), "heat": _heat(len(by_area[name]))}
+        {
+            "name": name,
+            "tone": _TEST_TONE[name],
+            "machines": by_area[name],
+            "count": len(by_area[name]),
+            "heat": _heat(len(by_area[name])),
+        }
         for name in TEST_AREAS
     ]
     testing_count = sum(area["count"] for area in test_areas)
+    waiting_count = len(waiting)
     return {
         "lines": lines,
+        "waiting_machines": waiting,
+        "waiting_count": waiting_count,
+        "waiting_heat": _heat(waiting_count),
         "test_areas": test_areas,
         "eol_machines": eol,
         "assembly_count": assembly_count,
         "testing_count": testing_count,
         "eol_count": len(eol),
         "eol_heat": _heat(len(eol)),
-        "on_floor": assembly_count + testing_count + len(eol),
+        "on_floor": assembly_count + waiting_count + testing_count + len(eol),
         "legend": LEGEND,
     }
 
@@ -211,6 +238,8 @@ def _chip_payload(chip):
         "tone": chip["tone"],
         "rework": chip["rework"],
         "caption": chip["caption"],
+        "serial": chip["serial"],
+        "where": chip["where"],
         "dots": chip["dots"],
     }
 
@@ -220,6 +249,8 @@ def floor_board_payload(start=None, end=None, on_date=None, shift=""):
     board = floor_board(start=start, end=end, on_date=on_date, shift=shift)
     return {
         "assembly_count": board["assembly_count"],
+        "waiting_count": board["waiting_count"],
+        "waiting_heat": board["waiting_heat"],
         "testing_count": board["testing_count"],
         "eol_count": board["eol_count"],
         "eol_heat": board["eol_heat"],
@@ -243,6 +274,7 @@ def floor_board_payload(start=None, end=None, on_date=None, shift=""):
             }
             for line in board["lines"]
         ],
+        "waiting_machines": [_chip_payload(chip) for chip in board["waiting_machines"]],
         "test_areas": [
             {
                 "name": area["name"],

@@ -45,6 +45,7 @@ class PhaseCode:
     PRODUCTION = "PRODUCTION"
     ASSEMBLY = "ASSEMBLY"
     ELECTRICAL = "ELECTRICAL"
+    WAITING = "WAITING"
     TESTING = "TESTING"
     EOL = "EOL"
     QC = "QC"
@@ -56,6 +57,7 @@ class PhaseCode:
         (PRODUCTION, "Production Leader"),
         (ASSEMBLY, "Assembly"),
         (ELECTRICAL, "Electrical"),
+        (WAITING, "Waiting Area"),
         (TESTING, "Testing"),
         (EOL, "End of Line"),
         (QC, "Quality Control"),
@@ -81,6 +83,7 @@ class MachineStatus:
     WITH_PLANNER = "WITH_PLANNER"
     WITH_PRODUCTION = "WITH_PRODUCTION"
     IN_PRODUCTION = "IN_PRODUCTION"
+    IN_WAITING = "IN_WAITING"
     IN_TESTING = "IN_TESTING"
     IN_EOL = "IN_EOL"
     IN_QC = "IN_QC"
@@ -92,6 +95,7 @@ class MachineStatus:
         (WITH_PLANNER, "Planning Submitted"),
         (WITH_PRODUCTION, "With Production Leader"),
         (IN_PRODUCTION, "In Production"),
+        (IN_WAITING, "Waiting for test bay"),
         (IN_TESTING, "In Testing"),
         (IN_EOL, "In EOL"),
         (IN_QC, "In QC"),
@@ -230,6 +234,7 @@ PHASE_ROLE = {
     PhaseCode.PRODUCTION: Roles.PRODUCTION_LEADER,
     PhaseCode.ASSEMBLY: Roles.ASSEMBLY,
     PhaseCode.ELECTRICAL: Roles.ELECTRICAL,
+    PhaseCode.WAITING: Roles.TESTING,
     PhaseCode.TESTING: Roles.TESTING,
     PhaseCode.EOL: Roles.EOL,
     PhaseCode.QC: Roles.QC,
@@ -267,9 +272,10 @@ PHASE_DEFINITIONS = [
     (PhaseCode.PRODUCTION, "Production Leader", "Station allocation and production release", 3, "", "PRODUCTION"),
     (PhaseCode.ASSEMBLY, "Assembly", "Mechanical assembly job card", 4, "BUILD", "ASSEMBLY"),
     (PhaseCode.ELECTRICAL, "Electrical", "Electrical job card", 4, "BUILD", "ELECTRICAL"),
-    (PhaseCode.TESTING, "Testing", "Performance testing", 5, "", "TESTING"),
-    (PhaseCode.EOL, "End of Line", "End-of-line inspection", 6, "", "EOL"),
-    (PhaseCode.QC, "Quality Control", "Final inspection and release", 7, "", "QC"),
+    (PhaseCode.WAITING, "Waiting Area", "Ready for testing — waiting for a free test bay", 5, "", "TESTING"),
+    (PhaseCode.TESTING, "Testing", "Performance testing", 6, "", "TESTING"),
+    (PhaseCode.EOL, "End of Line", "End-of-line inspection", 7, "", "EOL"),
+    (PhaseCode.QC, "Quality Control", "Final inspection and release", 8, "", "QC"),
 ]
 
 STATUS_FOR_OPENED_PHASE = {
@@ -278,6 +284,7 @@ STATUS_FOR_OPENED_PHASE = {
     PhaseCode.PRODUCTION: MachineStatus.WITH_PRODUCTION,
     PhaseCode.ASSEMBLY: MachineStatus.IN_PRODUCTION,
     PhaseCode.ELECTRICAL: MachineStatus.IN_PRODUCTION,
+    PhaseCode.WAITING: MachineStatus.IN_WAITING,
     PhaseCode.TESTING: MachineStatus.IN_TESTING,
     PhaseCode.EOL: MachineStatus.IN_EOL,
     PhaseCode.QC: MachineStatus.IN_QC,

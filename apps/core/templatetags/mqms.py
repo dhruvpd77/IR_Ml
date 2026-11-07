@@ -7,6 +7,7 @@ register = template.Library()
 BADGES = {
     MachineStatus.COMPLETED: "badge badge-green",
     MachineStatus.IN_PRODUCTION: "badge badge-blue",
+    MachineStatus.IN_WAITING: "badge badge-amber",
     MachineStatus.IN_TESTING: "badge badge-blue",
     MachineStatus.IN_EOL: "badge badge-blue",
     MachineStatus.IN_QC: "badge badge-amber",

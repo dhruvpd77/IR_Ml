@@ -14,14 +14,14 @@
   </dl>
   <section class="rework-banner">
     <p class="rework-eyebrow">Problem</p>
-    <p class="rework-problem">{{ item.reason }}</p>
+    <p class="comment-body">{{ item.reason }}</p>
   </section>
   <h3>Phase comments</h3>
   {% for note in item.notes.all %}
-    <div class="rework-banner" style="margin-top:12px">
-      <p class="rework-eyebrow">{{ note.get_note_type_display }} · {{ note.phase_code }} · {{ note.author.display_name|default:"Operator" }} · {{ note.created_at|date:"d M Y, H:i" }}</p>
-      <p class="rework-problem" style="font-size:22px">{{ note.text }}</p>
-    </div>
+    <article class="rework-note-card">
+      <p class="comment-meta">{{ note.get_note_type_display }} · {{ note.phase_code }} · {{ note.author.display_name|default:"Operator" }} · {{ note.created_at|date:"d M Y, H:i" }}</p>
+      <p class="comment-body">{{ note.text }}</p>
+    </article>
   {% empty %}
     <p class="muted">No phase comments yet.</p>
   {% endfor %}

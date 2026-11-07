@@ -124,7 +124,7 @@ def production_machine(request, machine_id):
 @login_required
 def phase_queue(request, phase_code):
     phase = get_object_or_404(ProductionPhase, code=phase_code, is_active=True)
-    if phase_code not in PhaseCode.JOB_CARDS:
+    if phase_code not in PhaseCode.JOB_CARDS and phase_code != PhaseCode.WAITING:
         raise PermissionDenied
     _guard(request.user, phase_code)
     tab = request.GET.get("tab") or "open"
@@ -133,18 +133,19 @@ def phase_queue(request, phase_code):
     state_filter = {"phase_states__phase": phase}
     if tab == "done":
         state_filter["phase_states__status"] = PhaseStatus.COMPLETED
-    elif tab == "rework":
+    elif tab == "rework" and phase_code != PhaseCode.WAITING:
         state_filter["phase_states__status"] = PhaseStatus.IN_PROGRESS
         state_filter["phase_states__rework_open"] = True
     else:
         state_filter["phase_states__status"] = PhaseStatus.IN_PROGRESS
+        tab = "open"
     queryset = visible_machines(request.user).filter(**state_filter)
     query = (request.GET.get("q") or "").strip()
     if query:
         queryset = queryset.filter(Q(machine_id__icontains=query) | Q(planning__work_order__icontains=query))
     return render(
         request,
-        "workflow/phase_queue.html",
+        "workflow/waiting_queue.html" if phase_code == PhaseCode.WAITING else "workflow/phase_queue.html",
         {
             "phase": phase,
             "tab": tab,

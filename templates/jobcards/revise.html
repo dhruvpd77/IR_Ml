@@ -27,7 +27,7 @@
               <label><input type="radio" name="f_{{ field.field_key }}" value="No" {% if current == "No" %}checked{% endif %}> No</label>
             </div>
           {% elif field.field_type == "long_text" or field.field_type == "remarks" %}
-            <textarea class="field-input" name="f_{{ field.field_key }}" rows="3">{{ current }}</textarea>
+            <textarea class="field-input comment-input" name="f_{{ field.field_key }}" rows="4">{{ current }}</textarea>
           {% elif field.field_type == "video" %}
             {% with existing=existing_files|getitem:field.field_key %}
               {% for clip in existing %}

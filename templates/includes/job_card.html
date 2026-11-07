@@ -72,7 +72,7 @@
             {% if item.media_urls %}
               <div class="print-block"><span>{{ item.label }}</span>{% for url in item.media_urls %}<video class="clip" controls playsinline src="{{ url }}"></video>{% endfor %}</div>
             {% elif item.kind == "long_text" or item.kind == "remarks" %}
-              <div class="print-block"><span>{{ item.label }}</span><p>{{ item.value }}</p></div>
+              <div class="print-block"><span>{{ item.label }}</span><p class="comment-body">{{ item.value }}</p></div>
             {% else %}
               <div class="print-line {% if item.gujarati %}gujarati{% endif %}">
                 <p>{{ item.label }}</p>
@@ -113,7 +113,7 @@
               {% if item.media_urls %}
                 <div class="print-block"><span>{{ item.label }}</span>{% for url in item.media_urls %}<video class="clip" controls playsinline src="{{ url }}"></video>{% endfor %}</div>
               {% elif item.kind == "long_text" or item.kind == "remarks" %}
-                <div class="print-block"><span>{{ item.label }}</span><p>{{ item.value }}</p></div>
+                <div class="print-block"><span>{{ item.label }}</span><p class="comment-body">{{ item.value }}</p></div>
               {% else %}
                 <div class="print-line {% if item.gujarati %}gujarati{% endif %}">
                   <p>{{ item.label }}</p>
@@ -128,7 +128,7 @@
     {% if card.reworks %}
       <header class="print-banner" style="background:#B45309"><strong>Rework</strong><span>{{ card.reworks|length }} record(s)</span></header>
       {% for item in card.reworks %}
-        <div class="print-block"><span>{{ item.label }}</span><p>{{ item.value }}</p></div>
+        <div class="print-block"><span>{{ item.label }}</span><p class="comment-body">{{ item.value }}</p></div>
       {% endfor %}
     {% endif %}
   </div>

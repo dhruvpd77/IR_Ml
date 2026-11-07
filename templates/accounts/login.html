@@ -3,13 +3,25 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0B1D36">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="IR MQMS">
+  <meta name="application-name" content="IR MQMS">
   <title>Sign in · Ingersoll Rand MQMS</title>
-  <link rel="icon" href="{% static 'favicon.svg' %}">
+  <link rel="manifest" href="{% url 'web_manifest' %}">
+  <link rel="icon" href="{% static 'img/icons/icon-192.png' %}">
+  <link rel="apple-touch-icon" href="{% static 'img/icons/icon-180.png' %}">
   <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=3">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=31">
 </head>
 <body class="landing">
+  <div id="appSplash" class="app-splash" aria-hidden="true">
+    <img src="{% static 'img/ir-logo.jpg' %}" alt="Ingersoll Rand">
+    <p>Production MQMS</p>
+  </div>
   <div class="stage">
     <div class="stage-grid" aria-hidden="true"></div>
     <div class="stage-glow" aria-hidden="true"></div>
@@ -76,5 +88,36 @@
       </section>
     </main>
   </div>
+  <button id="pwaInstall" class="pwa-install" type="button" hidden>Install IR MQMS app</button>
+  <script>
+    (() => {
+      const splash = document.getElementById("appSplash");
+      const hideSplash = () => splash && splash.classList.add("is-done");
+      window.addEventListener("load", () => setTimeout(hideSplash, 450));
+      setTimeout(hideSplash, 1800);
+
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("{% url 'service_worker' %}", { scope: "/" }).catch(() => {});
+      }
+
+      let deferred;
+      const btn = document.getElementById("pwaInstall");
+      window.addEventListener("beforeinstallprompt", (event) => {
+        event.preventDefault();
+        deferred = event;
+        if (btn) btn.hidden = false;
+      });
+      if (btn) {
+        btn.addEventListener("click", async () => {
+          if (!deferred) return;
+          deferred.prompt();
+          await deferred.userChoice;
+          deferred = null;
+          btn.hidden = true;
+        });
+      }
+      window.addEventListener("appinstalled", () => { if (btn) btn.hidden = true; });
+    })();
+  </script>
 </body>
 </html>

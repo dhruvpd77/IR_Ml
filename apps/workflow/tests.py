@@ -18,6 +18,7 @@ from machines.services import register_machine
 from workflow.engine import (
     WorkflowError,
     approve_qc,
+    assign_test_area,
     planner_release,
     production_release,
     reject_machine,
@@ -76,7 +77,12 @@ class WorkflowRuleTests(TestCase):
 
     def _to_qc(self, suffix):
         machine = self._to_production(suffix)
-        for phase, user in (("ASSEMBLY", self.assembly), ("ELECTRICAL", self.electrical), ("TESTING", self.testing), ("EOL", self.eol)):
+        for phase, user in (("ASSEMBLY", self.assembly), ("ELECTRICAL", self.electrical)):
+            submit_job_card(machine, user, phase, sample_answers(user, phase))
+            machine.refresh_from_db()
+        assign_test_area(machine, self.testing, "Test area 1")
+        machine.refresh_from_db()
+        for phase, user in (("TESTING", self.testing), ("EOL", self.eol)):
             submit_job_card(machine, user, phase, sample_answers(user, phase))
             machine.refresh_from_db()
         return machine
@@ -102,7 +108,14 @@ class WorkflowRuleTests(TestCase):
             submit_job_card(machine, self.testing, "TESTING", sample_answers(self.testing, "TESTING"))
         submit_job_card(machine, self.electrical, "ELECTRICAL", sample_answers(self.electrical, "ELECTRICAL"))
         machine.refresh_from_db()
+        self.assertEqual(machine.status, MachineStatus.IN_WAITING)
+        self.assertEqual(machine.current_phase, PhaseCode.WAITING)
+        with self.assertRaises(WorkflowError):
+            submit_job_card(machine, self.testing, "TESTING", sample_answers(self.testing, "TESTING"))
+        assign_test_area(machine, self.testing, "Test area 1")
+        machine.refresh_from_db()
         self.assertEqual(machine.status, MachineStatus.IN_TESTING)
+        self.assertEqual(machine.test_area, "Test area 1")
         with self.assertRaises(WorkflowError):
             approve_qc(machine, self.qc, sample_answers(self.qc, "QC"))
         submit_job_card(machine, self.testing, "TESTING", sample_answers(self.testing, "TESTING"))
@@ -136,6 +149,9 @@ class WorkflowRuleTests(TestCase):
             sample_answers(self.assembly, "ASSEMBLY"),
             corrective_action="Re-checked assembly joints after QC finding.",
         )
+        machine.refresh_from_db()
+        self.assertEqual(machine.current_phase, PhaseCode.WAITING)
+        assign_test_area(machine, self.testing, "Test area 2")
         machine.refresh_from_db()
         self.assertEqual(machine.current_phase, PhaseCode.TESTING)
         submit_job_card(

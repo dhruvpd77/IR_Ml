@@ -69,6 +69,8 @@ def _actions(user, machine):
             actions.append({"label": "Assign serial", "href": f"/workflow/planner/?focus={machine.machine_id}"})
         elif state.phase.code == PhaseCode.PRODUCTION:
             actions.append({"label": "Allocate station", "href": f"/workflow/production/{machine.machine_id}/"})
+        elif state.phase.code == PhaseCode.WAITING:
+            actions.append({"label": "Assign test bay", "href": "/workflow/phase/WAITING/"})
         elif state.phase.code in PhaseCode.JOB_CARDS:
             actions.append({"label": f"Open {state.phase.name} job card", "href": f"/job-cards/{state.phase.code}/{machine.machine_id}/"})
         elif state.phase.code == PhaseCode.PLANNING:
@@ -347,16 +349,17 @@ def pass_phase_view(request, machine_id, phase_code):
 @login_required
 @require_POST
 def set_test_area(request, machine_id):
+    from workflow.engine import WorkflowError, assign_test_area
+
     machine = _machine_or_404(request.user, machine_id)
     if not can_operate_phase(request.user, PhaseCode.TESTING):
         raise PermissionDenied
     area = (request.POST.get("test_area") or "").strip()
-    if area not in TEST_AREAS:
-        messages.error(request, "Select Test area 1, Test area 2, or Test area 3.")
-    else:
-        machine.test_area = area
-        machine.save(update_fields=["test_area", "updated_at"])
-        messages.success(request, f"{machine.machine_id} will be tested at {area}.")
+    try:
+        assign_test_area(machine, request.user, area)
+        messages.success(request, f"{machine.machine_id} assigned to {area} and moved to Testing.")
+    except WorkflowError as exc:
+        messages.error(request, str(exc))
     target = request.POST.get("next") or ""
     if target.startswith("/") and not target.startswith("//"):
         return redirect(target)

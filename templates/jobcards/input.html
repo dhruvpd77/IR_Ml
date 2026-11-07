@@ -59,7 +59,7 @@
       {% endwith %}
     {% endif %}
   {% elif field.field_type == "long_text" or field.field_type == "remarks" %}
-    <textarea class="field-input" name="f_{{ field.field_key }}" rows="4" {% if not editable %}disabled{% endif %}>{{ current }}</textarea>
+    <textarea class="field-input comment-input" name="f_{{ field.field_key }}" rows="4" {% if not editable %}disabled{% endif %}>{{ current }}</textarea>
   {% elif field.field_type == "date" %}
     <input class="field-input" type="date" name="f_{{ field.field_key }}" value="{{ current }}" {% if not editable %}disabled{% endif %}>
   {% elif field.field_type == "decimal" or field.field_type == "integer" or field.field_type == "measurement" %}

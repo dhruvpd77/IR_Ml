@@ -180,8 +180,9 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     form.addEventListener("submit", (event) => {
       const submitter = event.submitter;
-      if (!submitter || !["submit", "approve", "update"].includes(submitter.value)) return;
-      // Rework saves a draft of whatever is filled — do not force every field.
+      const action = submitter && submitter.value;
+      // Draft / Rework: do not force every job-card field.
+      if (!submitter || !["submit", "approve", "update"].includes(action)) return;
       form.querySelectorAll("[data-client-error]").forEach((node) => node.remove());
       form.querySelectorAll(".is-missing").forEach((node) => node.classList.remove("is-missing"));
       const seen = new Set();
@@ -193,6 +194,8 @@ document.addEventListener("DOMContentLoaded", () => {
       };
       form.querySelectorAll("textarea, select, input").forEach((field) => {
         if (field.disabled || field.closest("[hidden]")) return;
+        // Raise-rework box is never required for approve/submit.
+        if (field.name === "rework_problem" || field.closest("[data-rework-raise]")) return;
         if (field.hasAttribute("data-optional") || field.closest("[data-optional]")) return;
         if (field.type === "hidden" || field.type === "file" || field.type === "button" || field.type === "submit") return;
         const box = boxFor(field);
@@ -219,6 +222,30 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!first) return;
       event.preventDefault();
       first.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  });
+  // When pressing Rework, only the problem description is required.
+  document.querySelectorAll("form").forEach((form) => {
+    form.addEventListener("submit", (event) => {
+      const submitter = event.submitter;
+      if (!submitter || submitter.value !== "rework") return;
+      const panel = form.querySelector("[data-rework-raise]");
+      const field = form.querySelector('[name="rework_problem"]');
+      if (!panel || !field) return;
+      form.querySelectorAll("[data-client-error]").forEach((node) => node.remove());
+      form.querySelectorAll(".is-missing").forEach((node) => node.classList.remove("is-missing"));
+      if (String(field.value || "").trim()) return;
+      const box = field.closest(".field") || panel;
+      box.classList.add("is-missing");
+      if (!box.querySelector(".field-error")) {
+        const note = document.createElement("p");
+        note.className = "field-error";
+        note.dataset.clientError = "1";
+        note.textContent = "Write the problem before raising rework.";
+        box.appendChild(note);
+      }
+      event.preventDefault();
+      box.scrollIntoView({ behavior: "smooth", block: "center" });
     });
   });
   syncInspectionDates(document);

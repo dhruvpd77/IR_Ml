@@ -13,6 +13,7 @@ STAGE_ORDER = (
     PhaseCode.PRODUCTION,
     PhaseCode.ASSEMBLY,
     PhaseCode.ELECTRICAL,
+    PhaseCode.WAITING,
     PhaseCode.TESTING,
     PhaseCode.EOL,
     PhaseCode.QC,
@@ -23,6 +24,7 @@ STAGE_LABELS = {
     PhaseCode.PRODUCTION: "Production",
     PhaseCode.ASSEMBLY: "Assembly",
     PhaseCode.ELECTRICAL: "Electrical",
+    PhaseCode.WAITING: "Waiting Area",
     PhaseCode.TESTING: "Testing",
     PhaseCode.EOL: "End of line",
     PhaseCode.QC: "Quality control",
@@ -38,6 +40,7 @@ CARD_META = {
     "line": {"label": "Under assembly", "tone": "amber", "icon": "wrench", "limit": PhaseCode.ELECTRICAL},
     "assembly": {"label": "In assembly", "tone": "amber", "icon": "wrench", "limit": PhaseCode.ASSEMBLY},
     "electrical": {"label": "In electrical", "tone": "amber", "icon": "zap", "limit": PhaseCode.ELECTRICAL},
+    "waiting": {"label": "Waiting for test bay", "tone": "amber", "icon": "hourglass", "limit": PhaseCode.WAITING},
     "testing": {"label": "In testing", "tone": "blue", "icon": "gauge", "limit": PhaseCode.TESTING},
     "eol": {"label": "EOL under production", "tone": "blue", "icon": "package-check", "limit": PhaseCode.EOL},
     "qc": {"label": "EOL assigned to Quality", "tone": "red", "icon": "shield-check", "limit": PhaseCode.QC},
@@ -110,6 +113,7 @@ def admin_stats(machine_type="", start=None, end=None, on_date=None, shift="", m
         ("planning", "Planning and serial", machines.filter(status__in=[MachineStatus.DRAFT, MachineStatus.WITH_PLANNER]).count(), "slate", "clipboard-list", PhaseCode.PLANNER, ""),
         ("production", "With production", machines.filter(status=MachineStatus.WITH_PRODUCTION).count(), "blue", "map-pin", PhaseCode.PRODUCTION, ""),
         ("line", "Under assembly", on_line.count(), "amber", "wrench", PhaseCode.ELECTRICAL, f"Assembly open {assembly_open} · Electrical open {electrical_open}"),
+        ("waiting", "Waiting for test bay", machines.filter(status=MachineStatus.IN_WAITING).count(), "amber", "hourglass", PhaseCode.WAITING, "Assembly done · awaiting Testing"),
         ("testing", "In testing", machines.filter(status=MachineStatus.IN_TESTING).count(), "blue", "gauge", PhaseCode.TESTING, ""),
         ("eol", "EOL under production", machines.filter(status=MachineStatus.IN_EOL).count(), "blue", "package-check", PhaseCode.EOL, ""),
         ("qc", "EOL assigned to Quality", machines.filter(status=MachineStatus.IN_QC).count(), "red", "shield-check", PhaseCode.QC, ""),
@@ -224,6 +228,8 @@ def machines_for_card(key, machine_type="", start=None, end=None, on_date=None, 
             phase_states__phase__code=PhaseCode.ELECTRICAL,
             phase_states__status=PhaseStatus.IN_PROGRESS,
         ).distinct().order_by("machine_id")
+    if key == "waiting":
+        return machines.filter(status=MachineStatus.IN_WAITING).order_by("machine_id")
     if key == "testing":
         return machines.filter(status=MachineStatus.IN_TESTING).order_by("machine_id")
     if key == "eol":

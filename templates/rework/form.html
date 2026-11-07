@@ -10,7 +10,7 @@
     <label class="field"><span class="field-label">Department that must correct it</span>
       <select class="field-input" name="target_phase" required>{% for target in targets %}<option value="{{ target.code }}">{{ target.name }}</option>{% endfor %}</select>
     </label>
-    <label class="field"><span class="field-label">Rejection reason</span><textarea class="field-input" name="reason" rows="4" required></textarea></label>
+    <label class="field"><span class="field-label">Problem description</span><textarea class="field-input comment-input" name="reason" rows="4" required></textarea></label>
     <label class="field"><span class="field-label">Photographs</span><input class="file-input" type="file" name="evidence" accept="image/*" multiple></label>
     <button class="btn-danger" type="submit">Create rework</button>
   </form>

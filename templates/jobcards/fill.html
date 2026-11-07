@@ -14,17 +14,25 @@
     {% include "includes/machine_summary.html" %}
     <section class="card">
       <h3>Journey</h3>
-      {% for group in steps %}
-        {% for item in group.phases %}
-          <p>{{ item.name }} · <span class="{{ item.status|badge_class }}">{{ item.status_label }}</span></p>
+      <div class="phase-chip-list">
+        {% for group in steps %}
+          {% for item in group.phases %}
+            <div class="phase-chip status-{{ item.status }}">
+              <strong>{{ item.name }}</strong>
+              <span class="{{ item.status|badge_class }}">{{ item.status_label }}</span>
+            </div>
+          {% endfor %}
         {% endfor %}
-      {% endfor %}
+      </div>
     </section>
   </div>
   <form method="post" enctype="multipart/form-data" class="card" {% if editable and not request.user.is_management %}data-require-all="1"{% endif %} {% if is_qc and editable and not qc_edit %}data-confirm="Record this QC decision?"{% endif %}>
     {% csrf_token %}
     {% if not editable %}
       <div class="message message-warning">This phase is not open for your submission. Previous records stay available below.</div>
+    {% endif %}
+    {% if prefilled_from_prior %}
+      <div class="message message-success">Previous job-card answers are already filled. Change only what needs fixing, add the rework solved comment, then approve.</div>
     {% endif %}
     {% include "includes/rework_panel.html" %}
     {% for group in groups %}
@@ -35,7 +43,7 @@
             <span class="field-label">{{ field.label }}{% if field.required %} *{% endif %}</span>
             {% if field.help_text %}<p class="field-help">{{ field.help_text }}</p>{% endif %}
             {% if field.field_type == "long_text" or field.field_type == "remarks" %}
-              <textarea class="field-input" name="f_{{ field.field_key }}" rows="3" {% if not editable %}disabled{% endif %}>{{ current }}</textarea>
+              <textarea class="field-input comment-input" name="f_{{ field.field_key }}" rows="4" {% if not editable %}disabled{% endif %}>{{ current }}</textarea>
             {% elif field.field_type == "pass_fail" %}
               <div class="choice-row">
                 <label><input type="radio" name="f_{{ field.field_key }}" value="Pass" {% if current == "Pass" %}checked{% endif %} {% if not editable %}disabled{% endif %}> Pass</label>
@@ -164,14 +172,14 @@
         {% endwith %}
       {% endfor %}
     {% endfor %}
-    <label class="field"><span class="field-label">Submission remarks</span><textarea class="field-input" name="remarks" rows="3" {% if not editable %}disabled{% endif %}>{{ saved_remarks }}</textarea></label>
+    <label class="field"><span class="field-label">Submission remarks</span><textarea class="field-input comment-input" name="remarks" rows="4" {% if not editable %}disabled{% endif %}>{{ saved_remarks }}</textarea></label>
     {% if qc_edit %}
       <p class="muted">Save changes stores the notes on this completed QC record. Photos are uploaded with the Upload photo button.</p>
-      <div class="btn-row">
+      <div class="form-actions btn-row">
         <button class="btn-primary" name="action" value="update" type="submit">Save changes</button>
       </div>
     {% elif editable and is_qc %}
-      <div class="btn-row">
+      <div class="form-actions btn-row">
         <button class="btn-ghost" name="action" value="draft" type="submit">Save draft</button>
         {% if can_raise_rework %}
           <button class="btn-danger" name="action" value="rework" type="submit">Rework</button>
@@ -179,7 +187,7 @@
         <button class="btn-primary" name="action" value="approve" type="submit">Approved and go to next phase</button>
       </div>
     {% elif editable %}
-      <div class="btn-row">
+      <div class="form-actions btn-row">
         <button class="btn-ghost" name="action" value="draft" type="submit">Save draft</button>
         {% if can_raise_rework %}
           <button class="btn-danger" name="action" value="rework" type="submit">Rework</button>

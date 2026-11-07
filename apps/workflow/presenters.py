@@ -22,6 +22,8 @@ GRID_SECTIONS = {
 
 
 def pipeline_label(machine):
+    if machine.status == MachineStatus.IN_WAITING or machine.current_phase == PhaseCode.WAITING:
+        return "Waiting Area · ready for test bay"
     if machine.status in {MachineStatus.IN_PRODUCTION, MachineStatus.UNDER_REWORK} or machine.current_phase == PhaseCode.BUILD:
         states = {state.phase.code: state for state in machine.phase_states.all()}
         assembly = states.get(PhaseCode.ASSEMBLY)

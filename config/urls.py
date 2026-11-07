@@ -12,6 +12,8 @@ admin.site.index_title = "Administration"
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("health/", core_views.health, name="health"),
+    path("sw.js", core_views.service_worker, name="service_worker"),
+    path("manifest.webmanifest", core_views.web_manifest, name="web_manifest"),
     path("", include("core.urls")),
     path("", include("accounts.urls")),
     path("machines/", include("machines.urls")),

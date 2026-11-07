@@ -28,19 +28,19 @@
       {% if machine.is_under_rework %}<p><span class="badge badge-red">Rework cycle {{ machine.rework_count }}</span></p>{% endif %}
     </section>
   </div>
-  <section class="card">
-    <h3>Track</h3>
-    <p class="muted">The red stop is the phase this machine is in now.</p>
-    {% include "includes/track.html" %}
-    {% if actions %}
-      <div class="btn-row" style="margin-top:14px">
-        {% for action in actions %}<a class="btn-primary" href="{{ action.href }}">{{ action.label }}</a>{% endfor %}
-      </div>
-    {% endif %}
-    {% if can_submit_planning %}
-      <form method="post" action="{% url 'machines:submit' machine.machine_id %}" data-confirm="Submit this machine to the production leader?" style="margin-top:12px">{% csrf_token %}<button class="btn-primary" type="submit">Submit to production</button></form>
-    {% endif %}
-  </section>
+    <section class="card phase-panel">
+      <h3>Track</h3>
+      <p class="muted">The red stop is the phase this machine is in now.</p>
+      {% include "includes/track.html" %}
+      {% if actions %}
+        <div class="form-actions btn-row" style="margin-top:14px">
+          {% for action in actions %}<a class="btn-primary" href="{{ action.href }}">{{ action.label }}</a>{% endfor %}
+        </div>
+      {% endif %}
+      {% if can_submit_planning %}
+        <form method="post" action="{% url 'machines:submit' machine.machine_id %}" data-confirm="Submit this machine to the production leader?" style="margin-top:12px">{% csrf_token %}<button class="btn-primary" type="submit">Submit to production</button></form>
+      {% endif %}
+    </section>
 </div>
 
 <div class="two-col" style="margin-top:16px">
@@ -48,7 +48,7 @@
     <h3>Timeline</h3>
     <ul class="timeline">
       {% for event in events %}
-        <li><span class="dot"></span><div><strong>{{ event|event_title }}</strong><p class="muted">{{ event.created_at|date:"d M Y, H:i" }} · {{ event.actor.display_name|default:"System" }}</p>{% if event.remarks %}<p>{{ event.remarks }}</p>{% endif %}</div></li>
+        <li><span class="dot"></span><div><strong>{{ event|event_title }}</strong><p class="muted">{{ event.created_at|date:"d M Y, H:i" }} · {{ event.actor.display_name|default:"System" }}</p>{% if event.remarks %}<p class="event-remark">{{ event.remarks }}</p>{% endif %}</div></li>
       {% endfor %}
     </ul>
   </section>
@@ -56,8 +56,10 @@
     <section class="card">
       <h3>Rework</h3>
       {% for item in reworks %}
-        <p><a href="{% url 'rework:detail' item.pk %}">{{ item.rework_code }}</a> · {{ item.assigned_phase.name }} · <span class="{{ item.status|badge_class }}">{{ item.get_status_display }}</span></p>
-        <p>{{ item.reason }}</p>
+        <article class="rework-note-card">
+          <p class="comment-meta"><a href="{% url 'rework:detail' item.pk %}">{{ item.rework_code }}</a> · {{ item.assigned_phase.name }} · <span class="{{ item.status|badge_class }}">{{ item.get_status_display }}</span></p>
+          <p class="comment-body">{{ item.reason }}</p>
+        </article>
       {% empty %}<p class="muted">No rework on this machine.</p>{% endfor %}
       {% if can_reject %}
         <a class="btn-danger" href="{% url 'rework:create' machine.machine_id %}">Raise rework</a>
@@ -65,8 +67,13 @@
     </section>
     <section class="card">
       <h3>Notes</h3>
-      {% for note in notes %}<p><strong>{{ note.author.display_name|default:"User" }}</strong> · {{ note.created_at|date:"d M, H:i" }}<br>{{ note.body }}</p>{% empty %}<p class="muted">No notes yet.</p>{% endfor %}
-      <form method="post" action="{% url 'machines:add_note' machine.machine_id %}" class="stack">{% csrf_token %}<textarea class="field-input" name="body" rows="3" placeholder="Add a shop-floor note"></textarea><button class="btn-ghost" type="submit">Add note</button></form>
+      {% for note in notes %}
+        <article class="note-card">
+          <p class="note-meta">{{ note.author.display_name|default:"User" }} · {{ note.created_at|date:"d M, H:i" }}</p>
+          <p class="note-body">{{ note.body }}</p>
+        </article>
+      {% empty %}<p class="muted">No notes yet.</p>{% endfor %}
+      <form method="post" action="{% url 'machines:add_note' machine.machine_id %}" class="stack">{% csrf_token %}<textarea class="field-input note-input" name="body" rows="4" placeholder="Add a shop-floor note"></textarea><button class="btn-ghost" type="submit">Add note</button></form>
     </section>
     <section class="card">
       <h3>Files</h3>

@@ -194,6 +194,10 @@ class Command(BaseCommand):
         submit_job_card(machine, users["electrical1"], "ELECTRICAL", sample_answers(users["electrical1"], "ELECTRICAL"), remarks="Electrical complete.")
         if level == "testing":
             return
+        from workflow.engine import assign_test_area
+
+        assign_test_area(machine, users["testing1"], "Test area 1")
+        machine.refresh_from_db()
         submit_job_card(machine, users["testing1"], "TESTING", sample_answers(users["testing1"], "TESTING"), remarks="Test passed.")
         if level == "eol":
             return
@@ -227,6 +231,10 @@ class Command(BaseCommand):
             remarks="Assembly rework done.",
             corrective_action="Checked fitment and corrected the loose assembly found during QC.",
         )
+        machine.refresh_from_db()
+        from workflow.engine import assign_test_area
+
+        assign_test_area(machine, users["testing1"], "Test area 1")
         machine.refresh_from_db()
         submit_job_card(
             machine,

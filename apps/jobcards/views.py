@@ -24,6 +24,7 @@ from jobcards.services import (
     answers_from_request,
     attach_qc_photo,
     attach_testing_video,
+    ensure_phase_draft,
     group_fields,
     qc_card_template,
     remove_qc_photo,
@@ -72,6 +73,7 @@ def fill(request, phase_code, machine_id):
         and can_operate_phase(request.user, phase_code)
     )
     record = None
+    prefilled_from_prior = False
     if qc_edit:
         record = (
             JobCardSubmission.objects.filter(
@@ -87,7 +89,11 @@ def fill(request, phase_code, machine_id):
         editable = record is not None
     else:
         editable = bool(state and state.status == PhaseStatus.IN_PROGRESS and can_operate_phase(request.user, phase_code))
-        if state:
+        if state and editable:
+            record, prefilled_from_prior = ensure_phase_draft(
+                machine, request.user, phase_code, state.cycle
+            )
+        elif state:
             record = (
                 JobCardSubmission.objects.filter(
                     machine=machine,
@@ -252,7 +258,8 @@ def fill(request, phase_code, machine_id):
             "test_area_error": test_area_error if request.method == "POST" else False,
             "editable": editable,
             "qc_edit": qc_edit,
-            "saved_remarks": record.remarks if qc_edit and record else "",
+            "prefilled_from_prior": prefilled_from_prior,
+            "saved_remarks": record.remarks if record else "",
             "rework_open": bool(state and state.rework_open) or bool(active_rework(machine)),
             "open_rework": active_rework(machine),
             "can_raise_rework": editable and phase_code in REWORK_ORIGINS and not active_rework(machine) and not qc_edit,

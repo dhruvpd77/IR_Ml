@@ -1,7 +1,7 @@
 {% if open_rework %}
   <section class="rework-banner">
     <p class="rework-eyebrow">Open rework · {{ open_rework.rework_code }}</p>
-    <p class="rework-problem">{{ open_rework.reason }}</p>
+    <p class="comment-body">{{ open_rework.reason }}</p>
     <p class="muted">Raised from {{ open_rework.rejected_phase.name }}{% if open_rework.rejected_by %} by {{ open_rework.rejected_by.display_name }}{% endif %}.</p>
   </section>
   {% if editable %}
@@ -14,12 +14,12 @@
 {% endif %}
 
 {% if can_raise_rework %}
-  <section class="rework-raise card" data-rework-raise>
-    <h3 class="section-title">Raise rework</h3>
-    <p class="muted">Current answers are saved as a draft. The machine goes to the Production Leader for a new station, then follows the rework path back to this phase.</p>
+  <section class="rework-raise card" data-rework-raise data-optional>
+    <h3 class="section-title">Raise rework <span class="muted" style="text-transform:none;letter-spacing:0;font-size:13px">(optional)</span></h3>
+    <p class="muted">Only fill this when you press <strong>Rework</strong>. For normal approve/submit, leave it empty. Current answers are saved as a draft, then Production assigns a station and the machine follows the rework path back here.</p>
     <label class="field">
-      <span class="field-label">Problem description *</span>
-      <textarea class="field-input rework-comment-input" name="rework_problem" rows="4" placeholder="Write the problem clearly. This text is shown large on every rework screen."></textarea>
+      <span class="field-label">Problem description <span class="muted">(only if raising rework)</span></span>
+      <textarea class="field-input rework-comment-input" name="rework_problem" rows="4" data-optional placeholder="Write the problem clearly. This text is shown large on every rework screen."></textarea>
     </label>
   </section>
 {% endif %}

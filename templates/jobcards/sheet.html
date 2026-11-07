@@ -10,6 +10,7 @@
   <a class="btn-ghost" href="{% url 'machines:detail' machine.machine_id %}">View record</a>
 </div>
 {% if not editable %}<p class="message message-warning">This phase is not open. The card is shown so the earlier details stay visible.</p>{% endif %}
+{% if prefilled_from_prior %}<p class="message message-success">Previous job-card answers are already filled. Change only what needs fixing, add the rework solved comment, then approve.</p>{% endif %}
 <form method="post" class="job-sheet card" {% if editable and not request.user.is_management %}{% if phase.code == "ELECTRICAL" %}data-require-ok-only="1"{% else %}data-require-all="1"{% endif %}{% endif %} {% if rework_open %}data-confirm="Submit the corrective action?"{% endif %}>
   {% csrf_token %}
   <header class="sheet-top">

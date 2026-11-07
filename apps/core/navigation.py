@@ -39,6 +39,7 @@ NAV_ITEMS = [
     {"label": "Stations", "url": "workflow:production", "icon": "factory", "roles": {Roles.PRODUCTION_LEADER}, "highlight": ["production", "production_machine"]},
     {"label": "Assembly", "url": "workflow:phase", "args": ["ASSEMBLY"], "icon": "wrench", "roles": {Roles.ASSEMBLY}},
     {"label": "Electrical", "url": "workflow:phase", "args": ["ELECTRICAL"], "icon": "zap", "roles": {Roles.ELECTRICAL}},
+    {"label": "Waiting Area", "url": "workflow:phase", "args": ["WAITING"], "icon": "hourglass", "roles": {Roles.TESTING}},
     {"label": "Testing", "url": "workflow:phase", "args": ["TESTING"], "icon": "gauge", "roles": {Roles.TESTING}},
     {"label": "End of Line", "url": "workflow:phase", "args": ["EOL"], "icon": "package-check", "roles": {Roles.EOL}},
     {"label": "Quality Control", "url": "workflow:phase", "args": ["QC"], "icon": "shield-check", "roles": {Roles.QC}},
@@ -81,6 +82,8 @@ def home_phase(user):
         return None
     if user.role == Roles.PRODUCTION_LEADER:
         return PhaseCode.PRODUCTION
+    if user.role == Roles.TESTING:
+        return PhaseCode.WAITING
     for phase, role in PHASE_ROLE.items():
         if user.role == role:
             return phase

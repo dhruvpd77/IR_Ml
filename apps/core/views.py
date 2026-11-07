@@ -2,13 +2,18 @@ from calendar import month_name
 from datetime import datetime
 from urllib.parse import urlencode
 
+from pathlib import Path
+
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import strip_tags
+from django.views.decorators.cache import never_cache
+from django.views.decorators.http import require_GET
 
 from accounts.decorators import board_viewer_required, management_required, super_admin_required
 from accounts.permissions import can_operate_phase
@@ -120,6 +125,27 @@ def dashboard_query(machine_type="", month="", day="", shift="", scope=""):
     if machine_type:
         params["type"] = machine_type
     return urlencode(params)
+
+
+@require_GET
+@never_cache
+def service_worker(request):
+    """Serve the PWA service worker from site root so it can control the whole app."""
+    path = Path(settings.BASE_DIR) / "static" / "js" / "sw.js"
+    if not path.exists():
+        raise Http404("Service worker missing.")
+    response = FileResponse(path.open("rb"), content_type="application/javascript")
+    response["Service-Worker-Allowed"] = "/"
+    response["Cache-Control"] = "no-cache"
+    return response
+
+
+@require_GET
+def web_manifest(request):
+    path = Path(settings.BASE_DIR) / "static" / "manifest.webmanifest"
+    if not path.exists():
+        raise Http404("Manifest missing.")
+    return FileResponse(path.open("rb"), content_type="application/manifest+json")
 
 
 def health(request):

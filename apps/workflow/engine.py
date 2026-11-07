@@ -5,12 +5,13 @@ Business rules enforced here, not in the templates:
 1. Planning submission is required before a serial can be assigned.
 2. The production leader assigns the serial, then allocates the station.
 3. Assembly and Electrical run side by side and do not block each other.
-4. Testing opens only after both Assembly and Electrical are complete.
-5. EOL opens only after Testing. QC opens only after EOL.
-6. A machine is Completed only by QC approval.
-7. Rework saves the current card as draft, sends the machine to Production for a
-   new station, then follows Assembly → Testing → EOL as needed, and returns to
-   the origin phase actual job card. Electrical is skipped on the rework path.
+4. After Assembly and Electrical both complete, the machine enters Waiting Area.
+5. Testing opens only when a test bay is assigned from Waiting Area.
+6. EOL opens only after Testing. QC opens only after EOL.
+7. A machine is Completed only by QC approval.
+8. Rework saves the current card as draft, sends the machine to Production for a
+   new station, then follows Assembly → Waiting → Testing → EOL as needed, and
+   returns to the origin phase actual job card. Electrical is skipped on the rework path.
 """
 
 from django.db import connection, transaction
@@ -21,6 +22,7 @@ from audit.utils import log_audit
 from core.constants import (
     PHASE_ROLE,
     STATUS_FOR_OPENED_PHASE,
+    TEST_AREAS,
     EventType,
     MachineStatus,
     PhaseCode,
@@ -45,7 +47,8 @@ OPENING_MESSAGES = {
     PhaseCode.PRODUCTION: "has a serial number and is ready for station allocation.",
     PhaseCode.ASSEMBLY: "has been assigned to Assembly.",
     PhaseCode.ELECTRICAL: "has been assigned to Electrical.",
-    PhaseCode.TESTING: "has cleared Assembly and Electrical and is ready for testing.",
+    PhaseCode.WAITING: "is ready for testing and is waiting for a free test bay.",
+    PhaseCode.TESTING: "has been assigned a test bay and is ready for the testing job card.",
     PhaseCode.EOL: "has cleared Testing and is ready for end-of-line inspection.",
     PhaseCode.QC: "has cleared end-of-line inspection and is ready for final quality review.",
 }
@@ -190,11 +193,16 @@ def _set_position(machine, phases):
     if len(phases) > 1:
         machine.current_phase = PhaseCode.BUILD
         machine.status = MachineStatus.IN_PRODUCTION
-    else:
-        phase = phases[0]
-        machine.current_phase = phase.code
-        machine.status = STATUS_FOR_OPENED_PHASE.get(phase.code, machine.status)
-    machine.save(update_fields=["current_phase", "status", "updated_at"])
+        machine.save(update_fields=["current_phase", "status", "updated_at"])
+        return
+    phase = phases[0]
+    machine.current_phase = phase.code
+    machine.status = STATUS_FOR_OPENED_PHASE.get(phase.code, machine.status)
+    fields = ["current_phase", "status", "updated_at"]
+    if phase.code == PhaseCode.WAITING:
+        machine.test_area = ""
+        fields.append("test_area")
+    machine.save(update_fields=fields)
 
 
 def _notify_opened(machine, phases, user):
@@ -325,6 +333,45 @@ def planner_release(machine, user, serial):
         _complete(machine, phase, user, remarks=f"Serial {serial} assigned.")
         _advance(machine, phase, user)
         log_audit(user, "planner.release", instance=machine, changes={"serial": serial})
+        return machine
+
+
+def assign_test_area(machine, user, area):
+    """Move a machine from Waiting Area into Testing by assigning a test bay."""
+    area = (area or "").strip()
+    if area not in TEST_AREAS:
+        raise WorkflowError("Select Test area 1, Test area 2, or Test area 3.")
+    _require_operator(user, PhaseCode.TESTING)
+    with transaction.atomic():
+        machine = _lock(machine)
+        waiting = _phase(PhaseCode.WAITING)
+        waiting_state = _state(machine, waiting)
+        machine.test_area = area
+        machine.save(update_fields=["test_area", "updated_at"])
+        _event(
+            machine,
+            EventType.STATION_ASSIGNED,
+            user,
+            phase=waiting if waiting_state.status == PhaseStatus.IN_PROGRESS else _phase(PhaseCode.TESTING),
+            remarks=f"Test bay: {area}",
+            metadata={"test_area": area},
+        )
+        if waiting_state.status == PhaseStatus.IN_PROGRESS:
+            rework = active_rework(machine)
+            if rework and rework.assigned_phase_id == waiting.id:
+                try:
+                    advance_rework_after_phase(
+                        machine,
+                        user,
+                        waiting,
+                        resolution_comment=f"Assigned to {area}.",
+                    )
+                except ReworkFlowError as exc:
+                    raise WorkflowError(str(exc)) from exc
+            else:
+                _complete(machine, waiting, user, remarks=f"Assigned to {area}.")
+                _advance(machine, waiting, user)
+        log_audit(user, "testing.area", instance=machine, changes={"test_area": area})
         return machine
 
 
