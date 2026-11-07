@@ -1637,36 +1637,7 @@ select.field-input {
   .card, .step-card { box-shadow: none; }
 }
 
-/* PWA splash + install */
-.app-splash {
-  position: fixed;
-  inset: 0;
-  z-index: 2000;
-  display: grid;
-  place-content: center;
-  gap: 18px;
-  background: #ffffff;
-  transition: opacity .35s ease, visibility .35s ease;
-}
-.app-splash img {
-  width: min(72vw, 320px);
-  height: auto;
-  object-fit: contain;
-}
-.app-splash p {
-  margin: 0;
-  text-align: center;
-  font-weight: 800;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: #0b1d36;
-  font-size: 13px;
-}
-.app-splash.is-done {
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-}
+/* PWA install */
 .pwa-install {
   position: fixed;
   right: 16px;
@@ -1686,6 +1657,5 @@ select.field-input {
 .pwa-install:hover { filter: brightness(1.05); }
 .pwa-install[hidden] { display: none !important; }
 @media (display-mode: standalone), (display-mode: fullscreen) {
-  .app-splash { display: none; }
   .pwa-install { display: none !important; }
 }

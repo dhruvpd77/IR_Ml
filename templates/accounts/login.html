@@ -15,13 +15,9 @@
   <link rel="icon" href="{% static 'img/icons/icon-192.png' %}">
   <link rel="apple-touch-icon" href="{% static 'img/icons/icon-180.png' %}">
   <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=31">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=32">
 </head>
 <body class="landing">
-  <div id="appSplash" class="app-splash" aria-hidden="true">
-    <img src="{% static 'img/ir-logo.jpg' %}" alt="Ingersoll Rand">
-    <p>Production ROTARY</p>
-  </div>
   <div class="stage">
     <div class="stage-grid" aria-hidden="true"></div>
     <div class="stage-glow" aria-hidden="true"></div>
@@ -91,15 +87,9 @@
   <button id="pwaInstall" class="pwa-install" type="button" hidden>Install IR Rotary app</button>
   <script>
     (() => {
-      const splash = document.getElementById("appSplash");
-      const hideSplash = () => splash && splash.classList.add("is-done");
-      window.addEventListener("load", () => setTimeout(hideSplash, 450));
-      setTimeout(hideSplash, 1800);
-
       if ("serviceWorker" in navigator) {
         navigator.serviceWorker.register("{% url 'service_worker' %}", { scope: "/" }).catch(() => {});
       }
-
       let deferred;
       const btn = document.getElementById("pwaInstall");
       window.addEventListener("beforeinstallprompt", (event) => {

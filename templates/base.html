@@ -21,13 +21,9 @@
   <script>
     tailwind.config = { theme: { extend: { colors: { navy: "#0B1D36", ir: "#E10600" } } } };
   </script>
-  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=31">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=32">
 </head>
 <body class="{% if embed_mode %}is-embed{% endif %}">
-  <div id="appSplash" class="app-splash" aria-hidden="true">
-    <img src="{% static 'img/ir-logo.jpg' %}" alt="Ingersoll Rand">
-    <p>Production ROTARY</p>
-  </div>
   <div id="shell" class="shell{% if embed_mode %} is-embed{% endif %}">
     {% if not embed_mode %}
       {% include "includes/sidebar.html" %}
@@ -59,15 +55,9 @@
   <script src="{% static 'js/app.js' %}?v=17"></script>
   <script>
     (() => {
-      const splash = document.getElementById("appSplash");
-      const hideSplash = () => splash && splash.classList.add("is-done");
-      window.addEventListener("load", () => setTimeout(hideSplash, 450));
-      setTimeout(hideSplash, 1800);
-
       if ("serviceWorker" in navigator) {
         navigator.serviceWorker.register("{% url 'service_worker' %}", { scope: "/" }).catch(() => {});
       }
-
       let deferred;
       const btn = document.getElementById("pwaInstall");
       window.addEventListener("beforeinstallprompt", (event) => {
