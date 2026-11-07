@@ -8,8 +8,9 @@ Business rules enforced here, not in the templates:
 4. Testing opens only after both Assembly and Electrical are complete.
 5. EOL opens only after Testing. QC opens only after EOL.
 6. A machine is Completed only by QC approval.
-7. Rework reopens the selected phase and every later phase, and it never
-   deletes an earlier job card submission.
+7. Rework saves the current card as draft, sends the machine to Production for a
+   new station, then follows Assembly → Testing → EOL as needed, and returns to
+   the origin phase actual job card. Electrical is skipped on the rework path.
 """
 
 from django.db import connection, transaction
@@ -32,6 +33,12 @@ from machines.models import Machine
 from notifications.services import machine_label, machine_path, notify_roles
 from rework.models import ReworkAction, ReworkRequest
 from workflow.models import MachinePhaseState, ProductionPhase, WorkflowEvent
+from workflow.rework_flow import (
+    ReworkFlowError,
+    active_rework,
+    advance_rework_after_phase,
+    raise_rework,
+)
 
 OPENING_MESSAGES = {
     PhaseCode.PLANNER: "was submitted by Planning and is ready for a serial number.",
@@ -344,7 +351,20 @@ def production_release(machine, user, station, production_serial="", remarks="")
             metadata={"station": station.code, "production_serial": production_serial or ""},
         )
         _complete(machine, phase, user, remarks=f"Released to {station.name}.")
-        _advance(machine, phase, user)
+        rework = active_rework(machine)
+        if rework:
+            # Station chosen — move along the rework path (not the normal next phase).
+            try:
+                advance_rework_after_phase(
+                    machine,
+                    user,
+                    phase,
+                    resolution_comment=remarks or f"Station assigned: {station.name}.",
+                )
+            except ReworkFlowError as exc:
+                raise WorkflowError(str(exc)) from exc
+        else:
+            _advance(machine, phase, user)
         log_audit(user, "production.release", instance=machine, changes={"station": station.code})
         return machine
 
@@ -360,7 +380,13 @@ def _job_card(machine, user, phase_code, answers, files, remarks, corrective_act
         phase = _phase(phase_code)
         state = _state(machine, phase)
         _require_open(state, phase)
-        corrective_missing = not as_draft and state.rework_open and not (corrective_action or "").strip()
+        open_rework = active_rework(machine)
+        needs_rework_comment = (
+            not as_draft
+            and open_rework is not None
+            and phase_code in {PhaseCode.ASSEMBLY, PhaseCode.TESTING, PhaseCode.EOL, PhaseCode.QC}
+        )
+        corrective_missing = needs_rework_comment and not (corrective_action or "").strip()
         try:
             submission = persist_submission(
                 machine=machine,
@@ -382,14 +408,23 @@ def _job_card(machine, user, phase_code, answers, files, remarks, corrective_act
                 raise JobCardError("Review the highlighted job card fields.", errors) from exc
             raise
         if corrective_missing:
-            raise JobCardError("Review the highlighted job card fields.", {"corrective_action": MISSING})
+            raise JobCardError(
+                "Enter the rework solved comment before submitting.",
+                {"corrective_action": MISSING},
+            )
         if as_draft:
             log_audit(user, "jobcard.draft", instance=submission)
             return machine, submission
-        _completed, was_rework = _complete(machine, phase, user, remarks=remarks or "Job card submitted.")
-        if was_rework:
-            _resolve_rework(machine, phase, user, corrective_action, remarks)
-        _advance(machine, phase, user)
+        _completed, _was_rework = _complete(machine, phase, user, remarks=remarks or "Job card submitted.")
+        if open_rework:
+            try:
+                result = advance_rework_after_phase(machine, user, phase, resolution_comment=corrective_action)
+            except ReworkFlowError as exc:
+                raise WorkflowError(str(exc)) from exc
+            if result == "closed":
+                _advance(machine, phase, user)
+        else:
+            _advance(machine, phase, user)
         log_audit(user, "jobcard.submit", instance=submission)
         return machine, submission
 
@@ -485,13 +520,17 @@ def submit_job_card(machine, user, phase_code, answers, files=None, remarks="", 
     return machine
 
 
-def approve_qc(machine, user, answers, files=None, remarks="", require_all=False, skip_required=False):
+def approve_qc(machine, user, answers, files=None, remarks="", require_all=False, skip_required=False, corrective_action=""):
     _require_operator(user, PhaseCode.QC)
     with transaction.atomic():
         machine = _lock(machine)
         phase = _phase(PhaseCode.QC)
         state = _state(machine, phase)
         _require_open(state, phase)
+        open_item = active_rework(machine)
+        resolution = (corrective_action or remarks or "").strip()
+        if open_item and not resolution:
+            raise WorkflowError("Enter the rework solved comment before approving after rework.")
         persist_submission(
             machine=machine,
             user=user,
@@ -505,6 +544,11 @@ def approve_qc(machine, user, answers, files=None, remarks="", require_all=False
             skip_required=skip_required,
         )
         _complete(machine, phase, user, remarks=remarks or "QC approved.")
+        if open_item:
+            try:
+                advance_rework_after_phase(machine, user, phase, resolution_comment=resolution)
+            except ReworkFlowError as exc:
+                raise WorkflowError(str(exc)) from exc
         now = timezone.now()
         machine.status = MachineStatus.COMPLETED
         machine.current_phase = PhaseCode.QC
@@ -571,132 +615,31 @@ def update_finished_qc(machine, user, answers, files=None, remarks="", require_a
 
 
 def reject_machine(machine, user, target_phase_code, reason, answers=None, files=None, attachment_files=None, remarks=""):
-    reason = (reason or "").strip()
-    target_phase_code = (target_phase_code or "").strip()
-    if not can_reject(user, machine):
-        raise WorkflowError("You are not authorised to reject this machine.")
-    with transaction.atomic():
-        machine = _lock(machine)
-        if machine.status == MachineStatus.DRAFT:
-            raise WorkflowError("A draft machine cannot be rejected.")
-        if ReworkRequest.objects.filter(machine=machine, status=ReworkRequest.Status.OPEN).exists():
-            raise WorkflowError("This machine already has an open rework request.")
-        if not target_phase_code:
-            raise WorkflowError("Choose the department that must correct the machine.")
-        target = _phase(target_phase_code)
-        if target.code == PhaseCode.QC:
-            raise WorkflowError("Choose the department that must correct the machine.")
-        reached = (
-            machine.phase_states.filter(status__in=[PhaseStatus.IN_PROGRESS, PhaseStatus.COMPLETED])
-            .select_related("phase")
-            .order_by("-phase__sequence")
-            .first()
-        )
-        if reached is None or target.sequence > reached.phase.sequence:
-            raise WorkflowError("The machine can only be sent back to a phase it has already reached.")
-        qc_phase = ProductionPhase.objects.filter(code=PhaseCode.QC).first()
-        qc_state = machine.phase_states.filter(phase=qc_phase, status=PhaseStatus.IN_PROGRESS).first() if qc_phase else None
-        if answers and qc_state is not None:
-            persist_submission(
-                machine=machine,
-                user=user,
-                phase_code=PhaseCode.QC,
-                cycle=qc_state.cycle,
-                answers=answers,
-                files=files,
-                status="SUBMITTED",
-                remarks=remarks or reason,
-            )
-        current = (
-            machine.phase_states.filter(status=PhaseStatus.IN_PROGRESS)
-            .select_related("phase")
-            .order_by("-phase__sequence")
-            .first()
-        )
-        rejected_phase = current.phase if current else target
-        now = timezone.now()
-        target_state = _state(machine, target)
-        target_state.cycle += 1
-        target_state.status = PhaseStatus.IN_PROGRESS
-        target_state.started_at = now
-        target_state.started_by = user
-        target_state.completed_at = None
-        target_state.completed_by = None
-        target_state.rework_open = True
-        target_state.save()
-        later = ProductionPhase.objects.filter(is_active=True, sequence__gt=target.sequence)
-        for phase in later:
-            state = _state(machine, phase)
-            state.cycle += 1
-            state.status = PhaseStatus.PENDING
-            state.started_at = None
-            state.started_by = None
-            state.completed_at = None
-            state.completed_by = None
-            state.rework_open = False
-            state.save()
-        machine.rework_count += 1
-        machine.is_under_rework = True
-        machine.status = MachineStatus.UNDER_REWORK
-        machine.current_phase = target.code
-        machine.qc_approved_at = None
-        machine.qc_approved_by = None
-        machine.save(
-            update_fields=[
-                "rework_count",
-                "is_under_rework",
-                "status",
-                "current_phase",
-                "qc_approved_at",
-                "qc_approved_by",
-                "updated_at",
-            ]
-        )
-        request = ReworkRequest.objects.create(
-            machine=machine,
-            rejected_phase=rejected_phase,
-            assigned_phase=target,
-            reason=reason,
-            rejected_by=user,
-            cycle_number=target_state.cycle,
-        )
-        for upload in attachment_files or []:
-            if not upload:
-                continue
-            MachineAttachment.objects.create(
-                machine=machine,
-                rework=request,
-                file=upload,
-                original_name=(upload.name or "evidence")[:240],
-                kind=MachineAttachment.Kind.IMAGE,
-                caption="Rejection evidence",
-                uploaded_by=user,
-            )
-        _event(
+    """Compatibility wrapper — rework always starts at Production, then follows the fixed path."""
+    del target_phase_code, attachment_files  # old "send back to" target is no longer used
+    open_state = (
+        machine.phase_states.filter(status=PhaseStatus.IN_PROGRESS)
+        .select_related("phase")
+        .order_by("-phase__sequence")
+        .first()
+    )
+    from_code = open_state.phase.code if open_state else ""
+    if from_code == PhaseCode.ELECTRICAL:
+        from_code = PhaseCode.ASSEMBLY
+    if from_code not in {PhaseCode.ASSEMBLY, PhaseCode.TESTING, PhaseCode.EOL, PhaseCode.QC}:
+        raise WorkflowError("Rework can be raised from Assembly, Testing, End of Line, or Quality.")
+    try:
+        return raise_rework(
             machine,
-            EventType.REJECTED,
             user,
-            phase=rejected_phase,
-            cycle=target_state.cycle,
-            remarks=reason,
-            metadata={"target": target.code, "rework": request.rework_code},
+            from_code,
+            reason,
+            answers=answers,
+            files=files,
+            remarks=remarks or "",
         )
-        _event(machine, EventType.PHASE_STARTED, user, phase=target, cycle=target_state.cycle, remarks="Reopened for rework.")
-        role = PHASE_ROLE.get(target.code)
-        notify_roles(
-            [role] if role else [],
-            title=f"Rework assigned for {machine.machine_id}",
-            body=(
-                f"{machine_label(machine)} was rejected to {target.name}."
-                + (f" {reason}" if reason else "")
-            ),
-            url=machine_path(machine),
-            machine=machine,
-            exclude_user=user,
-            category="rework",
-        )
-        log_audit(user, "qc.reject", instance=machine, changes={"target": target.code, "reason": reason})
-        return request
+    except ReworkFlowError as exc:
+        raise WorkflowError(str(exc)) from exc
 
 
 def reachable_rework_targets(machine):
@@ -712,8 +655,4 @@ def reachable_rework_targets(machine):
 
 
 def open_rework(machine):
-    return (
-        ReworkRequest.objects.filter(machine=machine, status=ReworkRequest.Status.OPEN)
-        .select_related("assigned_phase", "rejected_by")
-        .first()
-    )
+    return active_rework(machine)

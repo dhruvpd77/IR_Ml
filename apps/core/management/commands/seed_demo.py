@@ -204,20 +204,54 @@ class Command(BaseCommand):
             approve_qc(machine, users["qc1"], sample_answers(users["qc1"], "QC"), remarks="Released to finished goods.")
             return
         if level == "rework_open":
-            reject_machine(machine, users["qc1"], "ELECTRICAL", "Insulation reading was below the limit at the motor terminal.")
+            reject_machine(machine, users["qc1"], "QC", "Insulation reading was below the limit at the motor terminal.")
             return
-        reject_machine(machine, users["qc1"], "ELECTRICAL", "Control interlock did not drop out on the emergency stop.")
+        reject_machine(machine, users["qc1"], "QC", "Control interlock did not drop out on the emergency stop.")
+        machine.refresh_from_db()
+        from machines.models import ProductionStation
+
+        station = ProductionStation.objects.filter(is_active=True).first()
+        production_release(
+            machine,
+            users["planner1"],
+            station,
+            production_serial=machine.production_serial or f"RW-{machine.machine_id[-4:]}",
+            remarks="Rework station assigned.",
+        )
         machine.refresh_from_db()
         submit_job_card(
             machine,
-            users["electrical1"],
-            "ELECTRICAL",
-            sample_answers(users["electrical1"], "ELECTRICAL"),
-            remarks="Interlock circuit corrected.",
-            corrective_action="Replaced the emergency-stop contact block and verified the safety circuit.",
+            users["assembly1"],
+            "ASSEMBLY",
+            sample_answers(users["assembly1"], "ASSEMBLY"),
+            remarks="Assembly rework done.",
+            corrective_action="Checked fitment and corrected the loose assembly found during QC.",
         )
-        submit_job_card(machine, users["testing1"], "TESTING", sample_answers(users["testing1"], "TESTING"), remarks="Retest passed.")
-        submit_job_card(machine, users["eol1"], "EOL", sample_answers(users["eol1"], "EOL"), remarks="EOL repeated after rework.")
+        machine.refresh_from_db()
+        submit_job_card(
+            machine,
+            users["testing1"],
+            "TESTING",
+            sample_answers(users["testing1"], "TESTING"),
+            remarks="Retest passed.",
+            corrective_action="Retested after assembly correction. Readings within limit.",
+        )
+        machine.refresh_from_db()
+        submit_job_card(
+            machine,
+            users["eol1"],
+            "EOL",
+            sample_answers(users["eol1"], "EOL"),
+            remarks="EOL after rework.",
+            corrective_action="End-of-line checks repeated after rework path.",
+        )
+        machine.refresh_from_db()
+        approve_qc(
+            machine,
+            users["qc1"],
+            sample_answers(users["qc1"], "QC"),
+            remarks="Released after rework.",
+        )
 
     def _workbook(self):
         from pathlib import Path

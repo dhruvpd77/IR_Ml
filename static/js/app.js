@@ -181,6 +181,7 @@ document.addEventListener("DOMContentLoaded", () => {
     form.addEventListener("submit", (event) => {
       const submitter = event.submitter;
       if (!submitter || !["submit", "approve", "update"].includes(submitter.value)) return;
+      // Rework saves a draft of whatever is filled — do not force every field.
       form.querySelectorAll("[data-client-error]").forEach((node) => node.remove());
       form.querySelectorAll(".is-missing").forEach((node) => node.classList.remove("is-missing"));
       const seen = new Set();

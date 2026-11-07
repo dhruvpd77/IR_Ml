@@ -26,10 +26,7 @@
     {% if not editable %}
       <div class="message message-warning">This phase is not open for your submission. Previous records stay available below.</div>
     {% endif %}
-    {% if rework_open %}
-      <div class="message message-error">This machine was returned for rework. Describe the corrective action before submitting.{% if open_rework %} {{ open_rework.reason }}{% endif %}</div>
-      <label class="field {% if field_errors.corrective_action %}is-missing{% endif %}"><span class="field-label">Corrective action</span><textarea class="field-input" name="corrective_action" rows="3" {% if not editable %}disabled{% endif %}></textarea>{% if field_errors.corrective_action %}<p class="field-error">This field is missing.</p>{% endif %}</label>
-    {% endif %}
+    {% include "includes/rework_panel.html" %}
     {% for group in groups %}
       <h3 class="section-title">{{ group.name }}</h3>
       {% for field in group.fields %}
@@ -174,21 +171,19 @@
         <button class="btn-primary" name="action" value="update" type="submit">Save changes</button>
       </div>
     {% elif editable and is_qc %}
-      <h3 class="section-title">QC decision</h3>
-      <p class="muted">Send back to and rejection reason are only needed when rejecting. They are optional for approval.</p>
-      <label class="field" data-optional="1"><span class="field-label">Send back to</span>
-        <select class="field-input" name="target_phase" data-optional="1"><option value="">Select a phase for rejection</option>{% for target in targets %}<option value="{{ target.code }}">{{ target.name }}</option>{% endfor %}</select>
-      </label>
-      <label class="field" data-optional="1"><span class="field-label">Rejection reason</span><textarea class="field-input" name="reason" rows="3" data-optional="1"></textarea></label>
-      <label class="field" data-optional="1"><span class="field-label">Evidence photographs</span><input class="file-input" type="file" name="evidence" accept="image/*" multiple data-optional="1"></label>
       <div class="btn-row">
         <button class="btn-ghost" name="action" value="draft" type="submit">Save draft</button>
-        <button class="btn-danger" name="action" value="reject" type="submit">Reject and rework</button>
+        {% if can_raise_rework %}
+          <button class="btn-danger" name="action" value="rework" type="submit">Rework</button>
+        {% endif %}
         <button class="btn-primary" name="action" value="approve" type="submit">Approved and go to next phase</button>
       </div>
     {% elif editable %}
       <div class="btn-row">
         <button class="btn-ghost" name="action" value="draft" type="submit">Save draft</button>
+        {% if can_raise_rework %}
+          <button class="btn-danger" name="action" value="rework" type="submit">Rework</button>
+        {% endif %}
         <button class="btn-primary" name="action" value="submit" type="submit">Approved and go to next phase</button>
       </div>
     {% endif %}

@@ -38,7 +38,7 @@ def rework_list(request):
 def rework_detail(request, pk):
     item = get_object_or_404(
         ReworkRequest.objects.select_related("machine", "assigned_phase", "rejected_phase", "rejected_by").prefetch_related(
-            "actions__corrected_by", "attachments"
+            "actions__corrected_by", "attachments", "notes__author"
         ),
         pk=pk,
     )

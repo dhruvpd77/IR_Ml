@@ -36,15 +36,13 @@ from machines.services import visible_machines
 from workflow.engine import (
     WorkflowError,
     approve_qc,
-    open_rework,
     update_finished_qc,
-    reachable_rework_targets,
-    reject_machine,
     save_job_card_draft,
     submit_job_card,
 )
 from workflow.models import ProductionPhase
 from workflow.presenters import tracking_steps
+from workflow.rework_flow import REWORK_ORIGINS, ReworkFlowError, active_rework, raise_rework
 
 
 def _machine(user, machine_id):
@@ -133,20 +131,33 @@ def fill(request, phase_code, machine_id):
                     return redirect("jobcards:fill", phase_code, machine.machine_id)
                 if phase_code == PhaseCode.QC and action == "approve":
                     approve_qc(
-                        machine, request.user, answers, uploads, remarks, require_all=require_all, skip_required=skip_required
+                        machine,
+                        request.user,
+                        answers,
+                        uploads,
+                        remarks,
+                        require_all=require_all,
+                        skip_required=skip_required,
+                        corrective_action=corrective,
                     )
                     messages.success(request, f"{machine.machine_id} approved and completed.")
                     return redirect("machines:detail", machine.machine_id)
-                if phase_code == PhaseCode.QC and action == "reject":
-                    reject_machine(
+                if action == "rework":
+                    if phase_code not in REWORK_ORIGINS:
+                        raise WorkflowError("Rework can be raised from Assembly, Testing, End of Line, or Quality.")
+                    raise_rework(
                         machine,
                         request.user,
-                        request.POST.get("target_phase", ""),
-                        request.POST.get("reason", ""),
-                        attachment_files=request.FILES.getlist("evidence"),
+                        phase_code,
+                        request.POST.get("rework_problem") or request.POST.get("reason") or "",
+                        answers=answers,
+                        files=uploads,
                         remarks=remarks,
                     )
-                    messages.success(request, f"{machine.machine_id} was sent back for rework.")
+                    messages.success(
+                        request,
+                        f"{machine.machine_id} rework submitted. Current card saved as draft. Production Leader will assign a station.",
+                    )
                     return redirect("machines:detail", machine.machine_id)
                 if action == "draft":
                     save_job_card_draft(
@@ -196,10 +207,9 @@ def fill(request, phase_code, machine_id):
             field_errors = exc.field_errors
             values = answers
             test_area_error = area_missing()
-        except WorkflowError as exc:
+        except (ReworkFlowError, WorkflowError) as exc:
             messages.error(request, str(exc))
             values = answers
-            test_area_error = area_missing()
     history = (
         machine.job_card_submissions.exclude(status=JobCardSubmission.Status.DRAFT)
         .select_related("operator")
@@ -243,9 +253,9 @@ def fill(request, phase_code, machine_id):
             "editable": editable,
             "qc_edit": qc_edit,
             "saved_remarks": record.remarks if qc_edit and record else "",
-            "rework_open": bool(state and state.rework_open),
-            "open_rework": open_rework(machine),
-            "targets": reachable_rework_targets(machine) if phase_code == PhaseCode.QC and editable and not qc_edit else [],
+            "rework_open": bool(state and state.rework_open) or bool(active_rework(machine)),
+            "open_rework": active_rework(machine),
+            "can_raise_rework": editable and phase_code in REWORK_ORIGINS and not active_rework(machine) and not qc_edit,
             "steps": tracking_steps(machine),
             "history": history,
             "is_qc": phase_code == PhaseCode.QC,

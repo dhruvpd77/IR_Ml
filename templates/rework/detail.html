@@ -4,16 +4,26 @@
 {% block content %}
 <div class="page-head"><div><p class="eyebrow">Rework</p><h1>{{ item.rework_code }}</h1></div><a class="btn-ghost" href="{% url 'machines:detail' item.machine.machine_id %}">Open machine</a></div>
 <section class="card">
-  <p><span class="{{ item.status|badge_class }}">{{ item.get_status_display }}</span> Reinspection: {{ item.reinspection_status }}</p>
+  <p><span class="{{ item.status|badge_class }}">{{ item.get_status_display }}</span></p>
   <dl class="meta-list">
     <div><dt>Machine</dt><dd>{{ item.machine.machine_id }}</dd></div>
-    <div><dt>Rejected from</dt><dd>{{ item.rejected_phase.name }}</dd></div>
-    <div><dt>Assigned to</dt><dd>{{ item.assigned_phase.name }}</dd></div>
+    <div><dt>Raised from</dt><dd>{{ item.rejected_phase.name }}</dd></div>
+    <div><dt>Current phase</dt><dd>{{ item.assigned_phase.name }}</dd></div>
     <div><dt>Raised by</dt><dd>{{ item.rejected_by.display_name|default:"—" }}</dd></div>
+    <div><dt>Path</dt><dd>{{ item.path_codes|default:"—" }}</dd></div>
   </dl>
-  <p>{{ item.reason }}</p>
-  {% for file in item.attachments.all %}<p><a href="{% url 'jobcards:attachment' file.pk %}">{{ file.original_name }}</a></p>{% endfor %}
-  <h3>Corrective actions</h3>
-  {% for action in item.actions.all %}<p><strong>{{ action.corrected_by.display_name|default:"Operator" }}</strong> · {{ action.completed_at|date:"d M Y, H:i" }}<br>{{ action.corrective_action }}</p>{% empty %}<p class="muted">The assigned department has not submitted the correction yet.</p>{% endfor %}
+  <section class="rework-banner">
+    <p class="rework-eyebrow">Problem</p>
+    <p class="rework-problem">{{ item.reason }}</p>
+  </section>
+  <h3>Phase comments</h3>
+  {% for note in item.notes.all %}
+    <div class="rework-banner" style="margin-top:12px">
+      <p class="rework-eyebrow">{{ note.get_note_type_display }} · {{ note.phase_code }} · {{ note.author.display_name|default:"Operator" }} · {{ note.created_at|date:"d M Y, H:i" }}</p>
+      <p class="rework-problem" style="font-size:22px">{{ note.text }}</p>
+    </div>
+  {% empty %}
+    <p class="muted">No phase comments yet.</p>
+  {% endfor %}
 </section>
 {% endblock %}

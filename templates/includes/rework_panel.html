@@ -1,0 +1,25 @@
+{% if open_rework %}
+  <section class="rework-banner">
+    <p class="rework-eyebrow">Open rework · {{ open_rework.rework_code }}</p>
+    <p class="rework-problem">{{ open_rework.reason }}</p>
+    <p class="muted">Raised from {{ open_rework.rejected_phase.name }}{% if open_rework.rejected_by %} by {{ open_rework.rejected_by.display_name }}{% endif %}.</p>
+  </section>
+  {% if editable %}
+    <label class="field {% if field_errors.corrective_action %}is-missing{% endif %}">
+      <span class="field-label">Rework solved comment *</span>
+      <textarea class="field-input rework-comment-input" name="corrective_action" rows="4" placeholder="Describe the work done to fix the problem." {% if not editable %}disabled{% endif %}></textarea>
+      {% if field_errors.corrective_action %}<p class="field-error">This field is missing.</p>{% endif %}
+    </label>
+  {% endif %}
+{% endif %}
+
+{% if can_raise_rework %}
+  <section class="rework-raise card" data-rework-raise>
+    <h3 class="section-title">Raise rework</h3>
+    <p class="muted">Current answers are saved as a draft. The machine goes to the Production Leader for a new station, then follows the rework path back to this phase.</p>
+    <label class="field">
+      <span class="field-label">Problem description *</span>
+      <textarea class="field-input rework-comment-input" name="rework_problem" rows="4" placeholder="Write the problem clearly. This text is shown large on every rework screen."></textarea>
+    </label>
+  </section>
+{% endif %}

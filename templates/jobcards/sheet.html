@@ -29,10 +29,7 @@
     <div><dt>Work order number</dt><dd>{{ machine.planning.work_order }}</dd></div>
     <div><dt>CCN</dt><dd>{{ machine.planning.ccn|default:"—" }}</dd></div>
   </dl>
-  {% if rework_open %}
-    <div class="message message-error">This machine was returned for rework.{% if open_rework %} {{ open_rework.reason }}{% endif %}</div>
-    <label class="field {% if field_errors.corrective_action %}is-missing{% endif %}"><span class="field-label">Corrective action</span><textarea class="field-input" name="corrective_action" rows="3" {% if not editable %}disabled{% endif %}></textarea>{% if field_errors.corrective_action %}<p class="field-error">This field is missing.</p>{% endif %}</label>
-  {% endif %}
+  {% include "includes/rework_panel.html" %}
   {% if phase.code == "TESTING" %}
     <label class="field {% if test_area_error %}is-missing{% endif %}">
       <span class="field-label">Testing station</span>
@@ -89,6 +86,9 @@
   {% if editable %}
     <div class="btn-row no-print">
       <button class="btn-ghost" name="action" value="draft" type="submit">Save draft</button>
+      {% if can_raise_rework %}
+        <button class="btn-danger" name="action" value="rework" type="submit">Rework</button>
+      {% endif %}
       <button class="btn-primary" name="action" value="submit" type="submit">Approved and go to next phase</button>
     </div>
   {% endif %}

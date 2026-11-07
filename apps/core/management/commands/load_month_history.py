@@ -301,7 +301,7 @@ class Command(BaseCommand):
                 approve_qc(machine, user, {}, remarks="Released.", skip_required=True)
             return
         if not ReworkRequest.objects.filter(machine=machine).exists():
-            reject_machine(machine, user, "ASSEMBLY", "Leak found at the discharge connection during the final check.")
+            reject_machine(machine, user, "QC", "Leak found at the discharge connection during the final check.")
 
     def _stamp(self, machine, when):
         approved = when

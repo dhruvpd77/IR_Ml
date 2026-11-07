@@ -116,29 +116,53 @@ class WorkflowRuleTests(TestCase):
     def test_rework_keeps_history_and_replays_later_phases(self):
         machine = self._to_qc("20")
         original = JobCardSubmission.objects.get(machine=machine, phase_code="ELECTRICAL", status="SUBMITTED")
-        reject_machine(machine, self.qc, "ELECTRICAL", "Terminal insulation was below the limit.")
+        reject_machine(machine, self.qc, "QC", "Terminal insulation was below the limit.")
         original.refresh_from_db()
         self.assertEqual(original.status, "SUBMITTED")
         machine.refresh_from_db()
         self.assertEqual(machine.status, MachineStatus.UNDER_REWORK)
         self.assertTrue(machine.is_under_rework)
+        self.assertEqual(machine.current_phase, PhaseCode.PRODUCTION)
         with self.assertRaises(WorkflowError):
             submit_job_card(machine, self.testing, "TESTING", sample_answers(self.testing, "TESTING"))
+        station = ProductionStation.objects.filter(is_active=True).first()
+        production_release(machine, self.leader, station, production_serial="SN-RW-20", remarks="Rework bay.")
+        machine.refresh_from_db()
+        self.assertEqual(machine.current_phase, PhaseCode.ASSEMBLY)
         submit_job_card(
             machine,
-            self.electrical,
-            "ELECTRICAL",
-            sample_answers(self.electrical, "ELECTRICAL"),
-            corrective_action="Re-terminated the motor lead and repeated the insulation test.",
+            self.assembly,
+            "ASSEMBLY",
+            sample_answers(self.assembly, "ASSEMBLY"),
+            corrective_action="Re-checked assembly joints after QC finding.",
         )
         machine.refresh_from_db()
-        self.assertEqual(machine.status, MachineStatus.IN_TESTING)
-        self.assertEqual(JobCardSubmission.objects.filter(machine=machine, phase_code="ELECTRICAL").count(), 2)
-        submit_job_card(machine, self.testing, "TESTING", sample_answers(self.testing, "TESTING"))
-        submit_job_card(machine, self.eol, "EOL", sample_answers(self.eol, "EOL"))
+        self.assertEqual(machine.current_phase, PhaseCode.TESTING)
+        submit_job_card(
+            machine,
+            self.testing,
+            "TESTING",
+            sample_answers(self.testing, "TESTING"),
+            corrective_action="Retest passed after assembly correction.",
+        )
         machine.refresh_from_db()
-        self.assertNotEqual(machine.status, MachineStatus.COMPLETED)
-        approve_qc(machine, self.qc, sample_answers(self.qc, "QC"))
+        self.assertEqual(machine.current_phase, PhaseCode.EOL)
+        submit_job_card(
+            machine,
+            self.eol,
+            "EOL",
+            sample_answers(self.eol, "EOL"),
+            corrective_action="EOL repeated on rework path.",
+        )
+        machine.refresh_from_db()
+        self.assertEqual(machine.current_phase, PhaseCode.QC)
+        approve_qc(
+            machine,
+            self.qc,
+            sample_answers(self.qc, "QC"),
+            remarks="Released after rework.",
+            corrective_action="Final QC check after rework path.",
+        )
         machine.refresh_from_db()
         self.assertEqual(machine.status, MachineStatus.COMPLETED)
         self.assertFalse(machine.is_under_rework)

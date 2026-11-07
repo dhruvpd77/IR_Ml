@@ -569,15 +569,36 @@ def machine_history_pdf(machine, steps, submissions, events, reworks):
         earlier = records[:-1]
         story.extend(_phase_story(code, title, color, tint, current, earlier, styles))
     if reworks:
+        from workflow.rework_flow import rework_notes_for_report
+
         story.append(Spacer(1, 10))
         story.append(_banner("Rework", f"{len(reworks)} record(s)", colors.HexColor("#B45309"), styles))
-        for item in reworks:
+        for block in rework_notes_for_report(machine):
+            item = block["rework"]
             story.append(
                 _line(
-                    {"label": f"{item.rework_code} · back to {item.assigned_phase.name} · {item.get_status_display()}", "kind": "long_text", "value": item.reason},
+                    {
+                        "label": f"{item.rework_code} · from {item.rejected_phase.name} · {item.get_status_display()}",
+                        "kind": "long_text",
+                        "value": f"Problem: {item.reason}",
+                    },
                     styles,
                 )
             )
+            for note in block["notes"]:
+                if note.note_type == "PROBLEM":
+                    continue
+                who = note.author.display_name if note.author_id else "Operator"
+                story.append(
+                    _line(
+                        {
+                            "label": f"Solved · {note.phase_code} · {who}",
+                            "kind": "long_text",
+                            "value": note.text,
+                        },
+                        styles,
+                    )
+                )
     if events:
         story.append(Spacer(1, 8))
         story.append(_text(f"{len(events)} shop-floor events are kept on this machine.", styles["CardMuted"]))

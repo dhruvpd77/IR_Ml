@@ -13,7 +13,7 @@
   <script>
     tailwind.config = { theme: { extend: { colors: { navy: "#0B1D36", ir: "#E10600" } } } };
   </script>
-  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=21">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=22">
 </head>
 <body class="{% if embed_mode %}is-embed{% endif %}">
   <div id="shell" class="shell{% if embed_mode %} is-embed{% endif %}">
@@ -43,7 +43,7 @@
     </div>
   </div>
   <script src="https://unpkg.com/lucide@latest"></script>
-  <script src="{% static 'js/app.js' %}?v=14"></script>
+  <script src="{% static 'js/app.js' %}?v=15"></script>
   {% block extra_js %}{% endblock %}
 </body>
 </html>
