@@ -9,9 +9,17 @@ admin.site.register(ImportBatch)
 
 @admin.register(PlanningCatalogItem)
 class PlanningCatalogItemAdmin(admin.ModelAdmin):
-    list_display = ("company", "machine_type", "model_description", "ccn", "uploaded_at")
-    search_fields = ("company", "machine_type", "model_description", "ccn")
-    list_filter = ("company", "machine_type")
+    list_display = (
+        "company",
+        "machine_type",
+        "model_description",
+        "ccn",
+        "job_card_key",
+        "job_card_format",
+        "uploaded_at",
+    )
+    search_fields = ("company", "machine_type", "model_description", "ccn", "job_card_key")
+    list_filter = ("company", "machine_type", "job_card_format")
 
 
 @admin.register(Machine)

@@ -3,7 +3,7 @@
 Business rules enforced here, not in the templates:
 
 1. Planning submission is required before a serial can be assigned.
-2. The production leader assigns the serial, then allocates the station.
+2. The production leader assigns the serial and station together (one step).
 3. Assembly and Electrical run side by side and do not block each other.
 4. After Assembly and Electrical both complete, the machine enters Waiting Area.
 5. Testing opens only when a test bay is assigned from Waiting Area.
@@ -43,8 +43,8 @@ from workflow.rework_flow import (
 )
 
 OPENING_MESSAGES = {
-    PhaseCode.PLANNER: "was submitted by Planning and is ready for a serial number.",
-    PhaseCode.PRODUCTION: "has a serial number and is ready for station allocation.",
+    PhaseCode.PLANNER: "was submitted by Planning and is ready for a serial number and station.",
+    PhaseCode.PRODUCTION: "needs a production station assigned.",
     PhaseCode.ASSEMBLY: "has been assigned to Assembly.",
     PhaseCode.ELECTRICAL: "has been assigned to Electrical.",
     PhaseCode.WAITING: "is ready for testing and is waiting for a free test bay.",
@@ -336,6 +336,28 @@ def planner_release(machine, user, serial):
         return machine
 
 
+def release_serial_and_station(machine, user, serial, station, production_serial="", remarks=""):
+    """Assign serial and station in one step, then open Assembly + Electrical."""
+    if station is None or not station.is_active:
+        raise WorkflowError("Select an active production station.")
+    serial = _clean_serial(serial)
+    planner_state = machine.phase_states.filter(phase__code=PhaseCode.PLANNER).first()
+    needs_serial = bool(planner_state and planner_state.status == PhaseStatus.IN_PROGRESS)
+    if needs_serial and not serial:
+        raise WorkflowError("Enter a serial number and select a station.")
+    if needs_serial:
+        machine = planner_release(machine, user, serial)
+    else:
+        serial = serial or machine.planner_serial
+    return production_release(
+        machine,
+        user,
+        station,
+        production_serial=production_serial or serial or "",
+        remarks=remarks or "",
+    )
+
+
 def assign_test_area(machine, user, area):
     """Move a machine from Waiting Area into Testing by assigning a test bay."""
     area = (area or "").strip()
@@ -387,7 +409,7 @@ def production_release(machine, user, station, production_serial="", remarks="")
         _require_open(_state(machine, phase), phase)
         machine.station = station
         machine.production_serial = production_serial
-        machine.production_remarks = (remarks or "").strip()
+        machine.production_remarks = (remarks or "").strip().upper()
         machine.save(update_fields=["station", "production_serial", "production_remarks", "updated_at"])
         _event(
             machine,
@@ -421,6 +443,8 @@ def _job_card(machine, user, phase_code, answers, files, remarks, corrective_act
         raise WorkflowError("This phase does not use a digital job card.")
     if phase_code == PhaseCode.QC and not as_draft and not approving:
         raise WorkflowError("QC is completed by approving the machine or by raising a rework.")
+    remarks = (remarks or "").strip().upper()
+    corrective_action = (corrective_action or "").strip().upper()
     _require_operator(user, phase_code)
     with transaction.atomic():
         machine = _lock(machine)
@@ -433,7 +457,7 @@ def _job_card(machine, user, phase_code, answers, files, remarks, corrective_act
             and open_rework is not None
             and phase_code in {PhaseCode.ASSEMBLY, PhaseCode.TESTING, PhaseCode.EOL, PhaseCode.QC}
         )
-        corrective_missing = needs_rework_comment and not (corrective_action or "").strip()
+        corrective_missing = needs_rework_comment and not corrective_action
         try:
             submission = persist_submission(
                 machine=machine,

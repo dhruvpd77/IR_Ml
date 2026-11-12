@@ -5,24 +5,97 @@
   <div>
     <p class="eyebrow">Planning Excel</p>
     <h1>Model catalog</h1>
-    <p class="muted">Upload the planning workbook. Unique model descriptions become the dropdown when a machine is registered. Choosing a model fills the CCN.</p>
+    <p class="muted">Model list maps each CCN to a job card name and source (Excel or Word). Excel cards come from the production checklists workbook; Word cards come from files in <strong>jobcard_word_file</strong>. Electrical and EOL stay shared for every model.</p>
   </div>
 </div>
 {% if latest %}
-  <p class="muted">{{ total }} models. Last upload {{ latest.uploaded_at|date:"d M Y, H:i" }}{% if latest.uploaded_by %} by {{ latest.uploaded_by.display_name }}{% endif %}.</p>
+  <p class="muted">{{ total }} models · showing {{ filtered_total }}. Last catalog upload {{ latest.uploaded_at|date:"d M Y, H:i" }}{% if latest.uploaded_by %} by {{ latest.uploaded_by.display_name }}{% endif %}. {{ checklist_count }} model job cards loaded.</p>
 {% else %}
   <p class="message message-warning">No workbook has been uploaded yet. Planning cannot pick a model until this list is loaded.</p>
 {% endif %}
-<form method="post" enctype="multipart/form-data" class="card stack" data-confirm="Replace the model list with this workbook?">
+
+<div class="two-col" style="align-items:start">
+  <form method="post" enctype="multipart/form-data" class="card stack" data-confirm="Replace the model list with this workbook?">
+    {% csrf_token %}
+    <h3>1. Model → job card map</h3>
+    <p class="muted">Upload <strong>Model Wise Category with job card.xlsx</strong>.</p>
+    {% for field in form %}{% include "includes/field.html" %}{% endfor %}
+    <p class="field-help">Required: Brand, CCN, Type, Model Description, <strong>Job Card Detail</strong>, and <strong>Word/Excel</strong>. Word rows also reload matching files from <code>jobcard_word_file/</code>.</p>
+    <button class="btn-primary" type="submit">Upload model catalog</button>
+  </form>
+
+  <form method="post" action="{% url 'machines:checklist_upload' %}" enctype="multipart/form-data" class="card stack" data-confirm="Refresh Assembly/Testing job cards from this workbook? Existing cards get a new version when fields change.">
+    {% csrf_token %}
+    <h3>2. Excel job card fields</h3>
+    <p class="muted">Upload <strong>UPDATED Production Checklists JAN-2025(copy).xlsx</strong> for rows marked Excel.</p>
+    {% for field in checklist_form %}{% include "includes/field.html" %}{% endfor %}
+    <p class="field-help">Each sheet name must match <strong>Job Card Detail</strong>. Re-upload whenever the Excel changes.</p>
+    <button class="btn-primary" type="submit">Upload Excel checklists</button>
+  </form>
+</div>
+
+<form method="post" action="{% url 'machines:word_checklist_import' %}" class="card stack" style="margin-top:1rem" data-confirm="Reload Assembly/Testing from Word files in jobcard_word_file for every Word-tagged model?">
   {% csrf_token %}
-  {% for field in form %}{% include "includes/field.html" %}{% endfor %}
-  <p class="field-help">Required columns: Brand (or Company), CCN, Type, Model Description. A repeated model for the same brand and type is kept once.</p>
-  <button class="btn-primary" type="submit">Upload and replace list</button>
+  <h3>3. Word job cards</h3>
+  <p class="muted">Matches <strong>Job Card Detail</strong> to a filename in <code>jobcard_word_file/</code> (ignores trailing <code>(1)</code> and .doc/.docx). Builds the same fillable Assembly/Testing pattern. Electrical and EOL stay shared.</p>
+  <button class="btn-primary" type="submit">Load Word job cards from folder</button>
 </form>
-<form class="filters-search" method="get">
-  <input class="field-input" type="search" name="q" value="{{ query }}" placeholder="Search model, CCN, company, or type">
-  <button class="btn-primary" type="submit">Search</button>
+
+<form class="catalog-filters card" method="get">
+  <label>
+    <span>Brand</span>
+    <select class="field-input" name="brand">
+      <option value="">All brands</option>
+      {% for item in filter_brands %}
+        <option value="{{ item }}" {% if filter_brand == item %}selected{% endif %}>{{ item }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>
+    <span>Type</span>
+    <select class="field-input" name="type">
+      <option value="">All types</option>
+      {% for item in filter_types %}
+        <option value="{{ item }}" {% if filter_type == item %}selected{% endif %}>{{ item }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>
+    <span>Model description</span>
+    <input class="field-input" type="search" name="model" value="{{ filter_model }}" placeholder="Contains…">
+  </label>
+  <label>
+    <span>CCN</span>
+    <input class="field-input" type="search" name="ccn" value="{{ filter_ccn }}" placeholder="Contains…">
+  </label>
+  <label>
+    <span>Job card name</span>
+    <select class="field-input" name="job_card">
+      <option value="">All job cards</option>
+      <option value="__none__" {% if filter_job_card == "__none__" %}selected{% endif %}>No job card</option>
+      {% for item in filter_job_cards %}
+        <option value="{{ item }}" {% if filter_job_card == item %}selected{% endif %}>{{ item }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>
+    <span>Source</span>
+    <select class="field-input" name="format">
+      <option value="">Excel + Word</option>
+      <option value="excel" {% if filter_format == "excel" %}selected{% endif %}>Excel</option>
+      <option value="word" {% if filter_format == "word" %}selected{% endif %}>Word</option>
+    </select>
+  </label>
+  <label>
+    <span>Search all</span>
+    <input class="field-input" type="search" name="q" value="{{ query }}" placeholder="Model, CCN, brand, type, job card">
+  </label>
+  <div class="catalog-filter-actions">
+    <button class="btn-primary" type="submit">Apply filters</button>
+    <a class="btn-ghost" href="{% url 'machines:catalog' %}">Clear</a>
+  </div>
 </form>
+
 <div class="table-wrap">
   <table class="data-table">
     <thead>
@@ -31,6 +104,8 @@
         <th>Type</th>
         <th>Model description</th>
         <th>CCN</th>
+        <th>Job card name</th>
+        <th>Source</th>
       </tr>
     </thead>
     <tbody>
@@ -40,9 +115,25 @@
           <td>{{ item.machine_type }}</td>
           <td>{{ item.model_description }}</td>
           <td>{{ item.ccn }}</td>
+          <td>
+            {% if item.job_card_key %}
+              <a class="job-card-link" href="{% url 'machines:catalog_job_card' %}?key={{ item.job_card_key|urlencode }}" title="Open {{ item.job_card_key }} checklist">{{ item.job_card_key }}</a>
+            {% else %}
+              <span class="muted">No job card</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if item.job_card_format == "word" %}
+              Word
+            {% elif item.job_card_format == "excel" %}
+              Excel
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
         </tr>
       {% empty %}
-        <tr><td colspan="4" class="empty">No models match.</td></tr>
+        <tr><td colspan="6" class="empty">No models match these filters.</td></tr>
       {% endfor %}
     </tbody>
   </table>

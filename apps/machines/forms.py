@@ -115,7 +115,14 @@ class PlanningForm(forms.Form):
 
         company = self._value("company")
         machine_type = self._value("machine_type")
-        model_choices = [(model, f"{model}  ·  {ccn}" if ccn else model) for model, ccn in models_for(company, machine_type)]
+        model_choices = []
+        for model, ccn, job_card, _job_card_format in models_for(company, machine_type):
+            parts = [model]
+            if ccn:
+                parts.append(str(ccn))
+            if job_card:
+                parts.append(str(job_card))
+            model_choices.append((model, "  ·  ".join(parts)))
         if (
             self.initial.get("model_description")
             and company == str(self.initial.get("company") or "").strip()
@@ -185,12 +192,13 @@ class PlanningForm(forms.Form):
             self.add_error("customer_inspection_date", "Enter the customer inspection date.")
         if data.get("customer_inspection") != "Yes":
             data["customer_inspection_date"] = None
-        detail = str(data.get("test_report_detail") or "").strip()
+        detail = str(data.get("test_report_detail") or "").strip().upper()
         if data.get("test_report_bar") == "Other":
             if not detail:
                 self.add_error("test_report_detail", "Write the test report.")
             else:
                 data["test_report_bar"] = detail
+                data["test_report_detail"] = detail
         elif data.get("test_report_bar") == "Standard":
             data["test_report_bar"] = "Standard"
         from machines.catalog import find_model
@@ -204,12 +212,15 @@ class PlanningForm(forms.Form):
             and str(data.get("machine_type") or "").strip() == str(self.initial.get("machine_type") or "").strip()
         )
         if match:
-            data["ccn"] = match.ccn
-            data["model_description"] = match.model_description
+            data["ccn"] = str(match.ccn or "").strip().upper()
+            data["model_description"] = str(match.model_description or "").strip().upper()
         elif same_as_saved:
-            data["ccn"] = self.initial.get("ccn") or data.get("ccn")
+            data["ccn"] = str(self.initial.get("ccn") or data.get("ccn") or "").strip().upper()
+            data["model_description"] = model.upper()
         elif model:
             self.add_error("model_description", "Select a model from the uploaded list.")
+        if "work_order" in data and data.get("work_order") is not None:
+            data["work_order"] = str(data.get("work_order") or "").strip().upper()
         data["blank"] = False
         return data
 
@@ -225,6 +236,21 @@ PlanningFormSet = formset_factory(PlanningForm, formset=BasePlanningFormSet, ext
 
 class ImportUploadForm(forms.Form):
     source = forms.FileField(label="Planning workbook")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        style_form(self)
+
+    def clean_source(self):
+        upload = self.cleaned_data["source"]
+        name = (upload.name or "").lower()
+        if not name.endswith(".xlsx"):
+            raise forms.ValidationError("Upload an Excel .xlsx file.")
+        return upload
+
+
+class ChecklistUploadForm(forms.Form):
+    source = forms.FileField(label="Production checklists workbook")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

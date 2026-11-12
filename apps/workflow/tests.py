@@ -55,9 +55,56 @@ def planning_data(suffix="1"):
     }
 
 
+def _seed_test_model_card():
+    """Attach a TEST-CARD checklist to the demo planning model used in tests."""
+    from jobcards.defaults import LEGACY_PHASE_TEMPLATES
+    from jobcards.models import JobCardField, JobCardTemplate
+
+    PlanningCatalogItem.objects.update_or_create(
+        company="Ingersoll Rand",
+        machine_type="Rotary Screw",
+        model_description="R90n Contact-Cooled Rotary 90 kW",
+        defaults={"ccn": "CCN-T1", "job_card_key": "TEST-CARD"},
+    )
+    for phase in (PhaseCode.ASSEMBLY, PhaseCode.TESTING):
+        spec = LEGACY_PHASE_TEMPLATES[phase]
+        template, created = JobCardTemplate.objects.get_or_create(
+            phase_code=phase,
+            checklist_key="TEST-CARD",
+            version=1,
+            defaults={
+                "name": f"{phase} · TEST-CARD",
+                "description": "Test checklist",
+                "is_active": True,
+            },
+        )
+        if not created and template.fields.exists():
+            continue
+        template.is_active = True
+        template.save(update_fields=["is_active"])
+        template.fields.all().delete()
+        JobCardField.objects.bulk_create(
+            [
+                JobCardField(
+                    template=template,
+                    field_key=key,
+                    section=section,
+                    label=label,
+                    field_type=field_type,
+                    required=required,
+                    unit=unit,
+                    options=[item.strip() for item in extra.split("|") if item.strip()] if field_type == "radio" and extra else [],
+                    sort_order=index,
+                )
+                for index, (key, section, label, field_type, required, unit, extra) in enumerate(spec["fields"], start=1)
+            ]
+        )
+
+
 class WorkflowRuleTests(TestCase):
     def setUp(self):
         ensure_reference_data()
+        _seed_test_model_card()
         self.planning = make_user("planning", Roles.PLANNING_DATA_ENTRY)
         self.leader = make_user("leader", Roles.PRODUCTION_LEADER)
         self.assembly = make_user("assembly", Roles.ASSEMBLY)
@@ -78,12 +125,12 @@ class WorkflowRuleTests(TestCase):
     def _to_qc(self, suffix):
         machine = self._to_production(suffix)
         for phase, user in (("ASSEMBLY", self.assembly), ("ELECTRICAL", self.electrical)):
-            submit_job_card(machine, user, phase, sample_answers(user, phase))
+            submit_job_card(machine, user, phase, sample_answers(user, phase, machine))
             machine.refresh_from_db()
         assign_test_area(machine, self.testing, "Test area 1")
         machine.refresh_from_db()
         for phase, user in (("TESTING", self.testing), ("EOL", self.eol)):
-            submit_job_card(machine, user, phase, sample_answers(user, phase))
+            submit_job_card(machine, user, phase, sample_answers(user, phase, machine))
             machine.refresh_from_db()
         return machine
 
@@ -99,28 +146,28 @@ class WorkflowRuleTests(TestCase):
         machine.refresh_from_db()
         self.assertEqual(machine.status, MachineStatus.IN_PRODUCTION)
         with self.assertRaises(WorkflowError):
-            submit_job_card(machine, self.testing, "TESTING", sample_answers(self.testing, "TESTING"))
-        submit_job_card(machine, self.assembly, "ASSEMBLY", sample_answers(self.assembly, "ASSEMBLY"))
+            submit_job_card(machine, self.testing, "TESTING", sample_answers(self.testing, "TESTING", machine))
+        submit_job_card(machine, self.assembly, "ASSEMBLY", sample_answers(self.assembly, "ASSEMBLY", machine))
         machine.refresh_from_db()
         self.assertEqual(machine.status, MachineStatus.IN_PRODUCTION)
         self.assertEqual(machine.current_phase, PhaseCode.BUILD)
         with self.assertRaises(WorkflowError):
-            submit_job_card(machine, self.testing, "TESTING", sample_answers(self.testing, "TESTING"))
-        submit_job_card(machine, self.electrical, "ELECTRICAL", sample_answers(self.electrical, "ELECTRICAL"))
+            submit_job_card(machine, self.testing, "TESTING", sample_answers(self.testing, "TESTING", machine))
+        submit_job_card(machine, self.electrical, "ELECTRICAL", sample_answers(self.electrical, "ELECTRICAL", machine))
         machine.refresh_from_db()
         self.assertEqual(machine.status, MachineStatus.IN_WAITING)
         self.assertEqual(machine.current_phase, PhaseCode.WAITING)
         with self.assertRaises(WorkflowError):
-            submit_job_card(machine, self.testing, "TESTING", sample_answers(self.testing, "TESTING"))
+            submit_job_card(machine, self.testing, "TESTING", sample_answers(self.testing, "TESTING", machine))
         assign_test_area(machine, self.testing, "Test area 1")
         machine.refresh_from_db()
         self.assertEqual(machine.status, MachineStatus.IN_TESTING)
         self.assertEqual(machine.test_area, "Test area 1")
         with self.assertRaises(WorkflowError):
-            approve_qc(machine, self.qc, sample_answers(self.qc, "QC"))
-        submit_job_card(machine, self.testing, "TESTING", sample_answers(self.testing, "TESTING"))
-        submit_job_card(machine, self.eol, "EOL", sample_answers(self.eol, "EOL"))
-        approve_qc(machine, self.qc, sample_answers(self.qc, "QC"))
+            approve_qc(machine, self.qc, sample_answers(self.qc, "QC", machine))
+        submit_job_card(machine, self.testing, "TESTING", sample_answers(self.testing, "TESTING", machine))
+        submit_job_card(machine, self.eol, "EOL", sample_answers(self.eol, "EOL", machine))
+        approve_qc(machine, self.qc, sample_answers(self.qc, "QC", machine))
         machine.refresh_from_db()
         self.assertEqual(machine.status, MachineStatus.COMPLETED)
         self.assertIsNotNone(machine.qc_approved_at)
@@ -137,7 +184,7 @@ class WorkflowRuleTests(TestCase):
         self.assertTrue(machine.is_under_rework)
         self.assertEqual(machine.current_phase, PhaseCode.PRODUCTION)
         with self.assertRaises(WorkflowError):
-            submit_job_card(machine, self.testing, "TESTING", sample_answers(self.testing, "TESTING"))
+            submit_job_card(machine, self.testing, "TESTING", sample_answers(self.testing, "TESTING", machine))
         station = ProductionStation.objects.filter(is_active=True).first()
         production_release(machine, self.leader, station, production_serial="SN-RW-20", remarks="Rework bay.")
         machine.refresh_from_db()
@@ -146,7 +193,7 @@ class WorkflowRuleTests(TestCase):
             machine,
             self.assembly,
             "ASSEMBLY",
-            sample_answers(self.assembly, "ASSEMBLY"),
+            sample_answers(self.assembly, "ASSEMBLY", machine),
             corrective_action="Re-checked assembly joints after QC finding.",
         )
         machine.refresh_from_db()
@@ -158,7 +205,7 @@ class WorkflowRuleTests(TestCase):
             machine,
             self.testing,
             "TESTING",
-            sample_answers(self.testing, "TESTING"),
+            sample_answers(self.testing, "TESTING", machine),
             corrective_action="Retest passed after assembly correction.",
         )
         machine.refresh_from_db()
@@ -167,7 +214,7 @@ class WorkflowRuleTests(TestCase):
             machine,
             self.eol,
             "EOL",
-            sample_answers(self.eol, "EOL"),
+            sample_answers(self.eol, "EOL", machine),
             corrective_action="EOL repeated on rework path.",
         )
         machine.refresh_from_db()
@@ -175,7 +222,7 @@ class WorkflowRuleTests(TestCase):
         approve_qc(
             machine,
             self.qc,
-            sample_answers(self.qc, "QC"),
+            sample_answers(self.qc, "QC", machine),
             remarks="Released after rework.",
             corrective_action="Final QC check after rework path.",
         )
@@ -190,13 +237,13 @@ class WorkflowRuleTests(TestCase):
         with self.assertRaises(WorkflowError):
             planner_release(second, self.leader, "SN-30")
         with self.assertRaises(WorkflowError):
-            submit_job_card(first, self.assembly, "ASSEMBLY", sample_answers(self.assembly, "ASSEMBLY"))
-            submit_job_card(first, self.assembly, "ASSEMBLY", sample_answers(self.assembly, "ASSEMBLY"))
+            submit_job_card(first, self.assembly, "ASSEMBLY", sample_answers(self.assembly, "ASSEMBLY", first))
+            submit_job_card(first, self.assembly, "ASSEMBLY", sample_answers(self.assembly, "ASSEMBLY", first))
 
     def test_other_roles_cannot_approve_or_open_another_queue(self):
         machine = self._to_qc("40")
         with self.assertRaises(WorkflowError):
-            approve_qc(machine, self.planning, sample_answers(self.planning, "QC"))
+            approve_qc(machine, self.planning, sample_answers(self.planning, "QC", machine))
         self.client.login(username="assembly", password="IrDemo@2026")
         response = self.client.get(reverse("workflow:planner"))
         self.assertEqual(response.status_code, 403)
@@ -211,7 +258,11 @@ class WorkflowRuleTests(TestCase):
         self.assertEqual(self.client.get(reverse("core:dashboard")).status_code, 200)
         make_user("boss", Roles.SUPER_ADMIN)
         self.client.login(username="boss", password="IrDemo@2026")
-        self.assertEqual(self.client.get(reverse("core:dashboard")).status_code, 200)
+        # Super admin has no shop-floor home phase — lands on monthly board.
+        home = self.client.get(reverse("core:dashboard"))
+        self.assertIn(home.status_code, {200, 302})
+        if home.status_code == 302:
+            self.assertEqual(self.client.get(home["Location"]).status_code, 200)
         self.assertEqual(self.client.get(reverse("machines:list")).status_code, 200)
 
     def test_queues_link_to_previously_filled_details(self):
@@ -234,7 +285,7 @@ class WorkflowRuleTests(TestCase):
         self.assertContains(record, "Machine serial number")
         self.assertContains(record, "SN-VIEW")
         self.assertContains(record, "Production Leader")
-        self.assertContains(record, "Bay release")
+        self.assertContains(record, "BAY RELEASE")
         self.assertContains(record, "PR-VIEW")
         self.assertContains(record, "Large / Medium – Line 1 · Station 4")
 

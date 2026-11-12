@@ -5,9 +5,9 @@
     </div>
     <p class="print-address">Ingersoll Rand (I) Ltd.<br>21-30 GIDC Industrial Estate,<br>Naroda, Ahmedabad- 382330<br>Gujarat, India</p>
     <div class="print-title">
-      <strong>OIL FREE IRN-SEEIRA-DX</strong>
-      <span class="print-badge">ULTRA COOLANT OIL</span>
-      <small>{{ card.machine_id }}</small>
+      <strong>{{ card.header_model }}</strong>
+      <span class="print-badge">{% if card.header_checklist and card.header_checklist != "—" %}{{ card.header_checklist }}{% else %}{{ card.machine_id }}{% endif %}</span>
+      <small>{{ card.machine_id }} · {{ card.header_brand }} · {{ card.header_type }} · {{ card.header_ccn }}</small>
     </div>
   </header>
   <div class="print-identity">

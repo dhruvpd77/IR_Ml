@@ -3,7 +3,6 @@ from django.db.models import Q
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.http import require_POST
 
 from accounts.decorators import management_required
 from accounts.permissions import can_operate_phase
@@ -12,9 +11,9 @@ from core.constants import TEST_AREAS, PHASE_ROLE, PhaseCode, PhaseStatus
 from core.http import paginate, querystring
 from machines.forms import ProductionReleaseForm
 from machines.floor import stations_by_line
-from machines.models import Machine, ProductionStation
+from machines.models import ProductionStation
 from machines.services import visible_machines
-from workflow.engine import WorkflowError, planner_release, production_release
+from workflow.engine import WorkflowError, production_release, release_serial_and_station
 from workflow.models import ProductionPhase
 
 
@@ -26,38 +25,87 @@ def _guard(user, phase_code):
 
 @login_required
 def planner_queue(request):
+    """Serial number + station together (also covers machines that only need a station)."""
     _guard(request.user, PhaseCode.PLANNER)
     if request.method == "POST":
+        selected = request.POST.getlist("machines")
+        if not selected:
+            messages.error(request, "Tick at least one machine, then enter its serial and station.")
+            return redirect("workflow:planner")
         done = 0
-        for machine_id in request.POST.getlist("machines"):
+        for machine_id in selected:
             machine = visible_machines(request.user).filter(machine_id=machine_id).first()
             if machine is None:
                 continue
+            station = ProductionStation.objects.filter(
+                pk=request.POST.get(f"station_{machine_id}"),
+                is_active=True,
+            ).first()
+            serial = request.POST.get(f"serial_{machine_id}", "")
             try:
-                planner_release(machine, request.user, request.POST.get(f"serial_{machine_id}", ""))
+                release_serial_and_station(
+                    machine,
+                    request.user,
+                    serial,
+                    station,
+                    production_serial=serial,
+                    remarks="",
+                )
                 done += 1
             except WorkflowError as exc:
                 messages.error(request, f"{machine.machine_id}: {exc}")
         if done:
-            messages.success(request, f"{done} machine{'s' if done != 1 else ''} given a serial and waiting for a station.")
+            messages.success(
+                request,
+                f"{done} machine{'s' if done != 1 else ''} given a serial and station — Assembly and Electrical are open.",
+            )
         return redirect("workflow:planner")
     queryset = (
         visible_machines(request.user)
-        .filter(phase_states__phase__code=PhaseCode.PLANNER, phase_states__status=PhaseStatus.IN_PROGRESS)
+        .filter(
+            Q(phase_states__phase__code=PhaseCode.PLANNER, phase_states__status=PhaseStatus.IN_PROGRESS)
+            | Q(phase_states__phase__code=PhaseCode.PRODUCTION, phase_states__status=PhaseStatus.IN_PROGRESS)
+        )
         .distinct()
+        .select_related("planning", "station")
+        .prefetch_related("phase_states__phase")
+        .order_by("machine_id")
     )
     query = (request.GET.get("q") or "").strip()
     if query:
-        queryset = queryset.filter(Q(machine_id__icontains=query) | Q(planning__work_order__icontains=query))
+        queryset = queryset.filter(
+            Q(machine_id__icontains=query)
+            | Q(planning__work_order__icontains=query)
+            | Q(planner_serial__icontains=query)
+        )
+    focus = (request.GET.get("focus") or "").strip()
+    page = paginate(request, queryset)
+    rows = []
+    for machine in page.object_list:
+        states = {state.phase.code: state.status for state in machine.phase_states.all()}
+        rows.append(
+            {
+                "machine": machine,
+                "needs_serial": states.get(PhaseCode.PLANNER) == PhaseStatus.IN_PROGRESS,
+            }
+        )
     return render(
         request,
         "workflow/planner.html",
-        {"page": paginate(request, queryset), "querystring": querystring(request), "query": query},
+        {
+            "page": page,
+            "rows": rows,
+            "querystring": querystring(request),
+            "query": query,
+            "focus": focus,
+            "station_groups": stations_by_line(),
+        },
     )
 
 
 @login_required
 def production_queue(request):
+    """Legacy / rework station-only queue; main path is Serial numbers (planner)."""
     _guard(request.user, PhaseCode.PRODUCTION)
     if request.method == "POST":
         station = ProductionStation.objects.filter(pk=request.POST.get("station"), is_active=True).first()
@@ -99,7 +147,10 @@ def production_queue(request):
 def production_machine(request, machine_id):
     _guard(request.user, PhaseCode.PRODUCTION)
     machine = get_object_or_404(visible_machines(request.user), machine_id=machine_id)
-    form = ProductionReleaseForm(request.POST or None, initial={"production_serial": machine.production_serial or "", "remarks": machine.production_remarks})
+    form = ProductionReleaseForm(
+        request.POST or None,
+        initial={"production_serial": machine.production_serial or "", "remarks": machine.production_remarks},
+    )
     if request.method == "POST" and form.is_valid():
         try:
             production_release(

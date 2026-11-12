@@ -49,9 +49,9 @@ MODELS = [
 PRIORITIES = ["1ST", "2ND", "STANDARD"]
 
 
-def sample_answers(user, phase_code):
+def sample_answers(user, phase_code, machine=None):
     answers = {}
-    for field in active_template(phase_code).active_fields():
+    for field in active_template(phase_code, machine).active_fields():
         kind = field.field_type
         if kind == "pass_fail":
             answers[field.field_key] = "Pass"
@@ -176,6 +176,50 @@ class Command(BaseCommand):
             added += 1
         return added
 
+    def _ensure_seed_job_card(self, machine):
+        """Map demo models to a SEED-CARD Assembly/Testing template."""
+        from jobcards.defaults import LEGACY_PHASE_TEMPLATES
+        from jobcards.models import JobCardField, JobCardTemplate
+        from machines.models import PlanningCatalogItem
+
+        key = "SEED-CARD"
+        planning = machine.planning
+        PlanningCatalogItem.objects.update_or_create(
+            company=planning.company,
+            machine_type=planning.machine_type,
+            model_description=planning.model_description,
+            defaults={"ccn": planning.ccn, "job_card_key": key},
+        )
+        for phase in ("ASSEMBLY", "TESTING"):
+            spec = LEGACY_PHASE_TEMPLATES[phase]
+            template, created = JobCardTemplate.objects.get_or_create(
+                phase_code=phase,
+                checklist_key=key,
+                version=1,
+                defaults={"name": f"{phase} · {key}", "description": "Seed checklist", "is_active": True},
+            )
+            if not created and template.fields.exists():
+                continue
+            template.is_active = True
+            template.save(update_fields=["is_active"])
+            template.fields.all().delete()
+            JobCardField.objects.bulk_create(
+                [
+                    JobCardField(
+                        template=template,
+                        field_key=fkey,
+                        section=section,
+                        label=label,
+                        field_type=field_type,
+                        required=required,
+                        unit=unit,
+                        options=[item.strip() for item in extra.split("|") if item.strip()] if field_type == "radio" and extra else [],
+                        sort_order=index,
+                    )
+                    for index, (fkey, section, label, field_type, required, unit, extra) in enumerate(spec["fields"], start=1)
+                ]
+            )
+
     def _advance(self, machine, level, users, station, index):
         if level == "draft":
             return
@@ -188,7 +232,8 @@ class Command(BaseCommand):
         production_release(machine, users["planner1"], station, production_serial=f"PR-26{index:04d}", remarks="Released to the build bays.")
         if level == "build":
             return
-        submit_job_card(machine, users["assembly1"], "ASSEMBLY", sample_answers(users["assembly1"], "ASSEMBLY"), remarks="Assembly complete.")
+        self._ensure_seed_job_card(machine)
+        submit_job_card(machine, users["assembly1"], "ASSEMBLY", sample_answers(users["assembly1"], "ASSEMBLY", machine), remarks="Assembly complete.")
         if level == "assembly_only":
             return
         submit_job_card(machine, users["electrical1"], "ELECTRICAL", sample_answers(users["electrical1"], "ELECTRICAL"), remarks="Electrical complete.")
@@ -198,7 +243,7 @@ class Command(BaseCommand):
 
         assign_test_area(machine, users["testing1"], "Test area 1")
         machine.refresh_from_db()
-        submit_job_card(machine, users["testing1"], "TESTING", sample_answers(users["testing1"], "TESTING"), remarks="Test passed.")
+        submit_job_card(machine, users["testing1"], "TESTING", sample_answers(users["testing1"], "TESTING", machine), remarks="Test passed.")
         if level == "eol":
             return
         submit_job_card(machine, users["eol1"], "EOL", sample_answers(users["eol1"], "EOL"), remarks="EOL accepted.")
@@ -227,7 +272,7 @@ class Command(BaseCommand):
             machine,
             users["assembly1"],
             "ASSEMBLY",
-            sample_answers(users["assembly1"], "ASSEMBLY"),
+            sample_answers(users["assembly1"], "ASSEMBLY", machine),
             remarks="Assembly rework done.",
             corrective_action="Checked fitment and corrected the loose assembly found during QC.",
         )
@@ -240,7 +285,7 @@ class Command(BaseCommand):
             machine,
             users["testing1"],
             "TESTING",
-            sample_answers(users["testing1"], "TESTING"),
+            sample_answers(users["testing1"], "TESTING", machine),
             remarks="Retest passed.",
             corrective_action="Retested after assembly correction. Readings within limit.",
         )

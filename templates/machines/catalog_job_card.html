@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Job card · {{ catalog_key }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="crumbs"><a href="{% url 'machines:catalog' %}">Model catalog</a> / Job card</p>
+    <h1>{{ catalog_key }}</h1>
+    <p class="muted">
+      Used by {{ model_count }} model{{ model_count|pluralize }} in the catalog.
+      {% if source_format == "word" %}Source: Word file in jobcard_word_file/{% elif source_format == "excel" %}Source: Excel production checklist{% endif %}
+      {% if aliased %} · loads checklist sheet <strong>{{ resolved_key }}</strong>{% endif %}
+    </p>
+  </div>
+  <a class="btn-ghost" href="{% url 'machines:catalog' %}?job_card={{ catalog_key|urlencode }}">Back to catalog</a>
+</div>
+
+{% if missing %}
+  <p class="message message-warning">
+    {% if source_format == "word" %}
+      Job card is not available for this Word name. Put a matching .doc/.docx in <code>jobcard_word_file/</code> (filename = job card name) and click Load Word job cards.
+    {% else %}
+      Job card is not available for this name. Upload the Production Checklists workbook with a matching sheet, or map this catalog name to an existing sheet.
+    {% endif %}
+  </p>
+{% endif %}
+
+{% for phase in phases %}
+  <section class="card stack" style="margin-bottom:16px">
+    <div class="page-head" style="margin:0">
+      <div>
+        <p class="eyebrow">{{ phase.code }}</p>
+        <h2>{{ phase.title }}</h2>
+        {% if phase.template %}
+          <p class="muted">{{ phase.template.name }} · v{{ phase.template.version }} · {{ phase.field_count }} fields</p>
+        {% else %}
+          <p class="muted">No active template for this phase.</p>
+        {% endif %}
+      </div>
+    </div>
+    {% if phase.sections %}
+      {% for section in phase.sections %}
+        <h3 class="section-title">{{ section.name }}</h3>
+        <ol class="catalog-field-list">
+          {% for field in section.fields %}
+            <li>
+              <strong>{{ field.label }}</strong>
+              <span class="muted">{{ field.get_field_type_display|default:field.field_type }}{% if field.unit %} · {{ field.unit }}{% endif %}{% if field.required %} · required{% endif %}</span>
+            </li>
+          {% endfor %}
+        </ol>
+      {% endfor %}
+    {% endif %}
+  </section>
+{% endfor %}
+{% endblock %}

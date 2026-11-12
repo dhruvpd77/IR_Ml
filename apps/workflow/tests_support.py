@@ -1,9 +1,9 @@
 from jobcards.services import active_template
 
 
-def sample_answers(user, phase_code):
+def sample_answers(user, phase_code, machine=None):
     answers = {}
-    for field in active_template(phase_code).active_fields():
+    for field in active_template(phase_code, machine).active_fields():
         kind = field.field_type
         if kind == "pass_fail":
             answers[field.field_key] = "Pass"

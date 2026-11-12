@@ -39,7 +39,7 @@ def rework_route(origin_code):
 def active_rework(machine):
     return (
         ReworkRequest.objects.filter(machine=machine, status=ReworkRequest.Status.OPEN)
-        .select_related("rejected_phase", "assigned_phase")
+        .select_related("rejected_phase", "assigned_phase", "rejected_by")
         .order_by("-pk")
         .first()
     )
@@ -95,7 +95,7 @@ def _pause_open_phases(machine, keep_codes):
 
 def raise_rework(machine, user, from_phase_code, problem_comment, answers=None, files=None, remarks=""):
     """Save the current card as draft (if any), then send the machine to Production for a new station."""
-    problem = (problem_comment or "").strip()
+    problem = (problem_comment or "").strip().upper()
     if not problem:
         raise ReworkFlowError("Describe the problem before submitting rework.")
     if from_phase_code not in REWORK_ORIGINS:

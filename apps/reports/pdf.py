@@ -501,13 +501,21 @@ def _progress_strip(steps, styles):
     return [Spacer(1, 8), _paint(table, commands)]
 
 
-def _phase_story(phase_code, title, color, tint, submission, earlier, styles):
-    from jobcards.services import active_template
+def _phase_story(phase_code, title, color, tint, submission, earlier, styles, machine=None):
+    from jobcards.services import JobCardError, active_template
 
     flow = [Spacer(1, 10)]
-    template = active_template(phase_code)
+    template = submission.template if submission is not None else None
+    if template is None:
+        try:
+            template = active_template(
+                phase_code, machine or (submission.machine if submission is not None else None)
+            )
+        except JobCardError:
+            template = None
     flow.append(_banner(title, _stamp(submission) if submission else "Not submitted", color, styles))
-    flow.extend(_section_flow(_card_items(template, submission), color, styles))
+    if template is not None:
+        flow.extend(_section_flow(_card_items(template, submission), color, styles))
     for old in earlier:
         flow.append(Spacer(1, 6))
         flow.append(_banner(f"{title} · earlier record", _stamp(old), colors.HexColor("#334155"), styles, size=9))
@@ -567,7 +575,7 @@ def machine_history_pdf(machine, steps, submissions, events, reworks):
         records = sorted(grouped.get(code, []), key=lambda item: (item.cycle, item.revision, item.pk))
         current = records[-1] if records else None
         earlier = records[:-1]
-        story.extend(_phase_story(code, title, color, tint, current, earlier, styles))
+        story.extend(_phase_story(code, title, color, tint, current, earlier, styles, machine=machine))
     if reworks:
         from workflow.rework_flow import rework_notes_for_report
 

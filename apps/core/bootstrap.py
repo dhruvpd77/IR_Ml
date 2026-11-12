@@ -145,6 +145,7 @@ def _ensure():
     for phase_code, spec in DEFAULT_TEMPLATES.items():
         template, _created = JobCardTemplate.objects.get_or_create(
             phase_code=phase_code,
+            checklist_key="",
             version=1,
             defaults={
                 "name": spec["name"],
@@ -208,8 +209,13 @@ def _upgrade_job_cards():
     from jobcards.defaults import TEMPLATE_MARKERS
 
     for phase_code, spec in DEFAULT_TEMPLATES.items():
+        # Shared Electrical / EOL / QC only. Model-wise Assembly/Testing use checklist_key.
         marker = TEMPLATE_MARKERS[phase_code]
-        active = JobCardTemplate.objects.filter(phase_code=phase_code, is_active=True).order_by("-version").first()
+        active = (
+            JobCardTemplate.objects.filter(phase_code=phase_code, checklist_key="", is_active=True)
+            .order_by("-version")
+            .first()
+        )
         if active and active.fields.filter(field_key=marker).exists():
             continue
         if active and active.submissions.exists():
@@ -217,6 +223,7 @@ def _upgrade_job_cards():
             active.save(update_fields=["is_active"])
             template = JobCardTemplate.objects.create(
                 phase_code=phase_code,
+                checklist_key="",
                 name=spec["name"],
                 description=spec["description"],
                 version=active.version + 1,
@@ -232,12 +239,24 @@ def _upgrade_job_cards():
         else:
             template = JobCardTemplate.objects.create(
                 phase_code=phase_code,
+                checklist_key="",
                 name=spec["name"],
                 description=spec["description"],
                 version=1,
                 is_active=True,
             )
         _write_fields(template, spec["fields"])
+    # Once model checklists exist, unscoped Assembly/Testing must not shadow them.
+    has_model_cards = JobCardTemplate.objects.filter(
+        phase_code__in=["ASSEMBLY", "TESTING"],
+        is_active=True,
+    ).exclude(checklist_key="").exists()
+    if has_model_cards:
+        JobCardTemplate.objects.filter(
+            phase_code__in=["ASSEMBLY", "TESTING"],
+            checklist_key="",
+            is_active=True,
+        ).update(is_active=False)
     _ensure_media_fields()
 
 
@@ -248,19 +267,22 @@ def _ensure_media_fields():
         ("QC", "qc_photo", "Inspection photos", "Inspection photos", "image"),
     )
     for phase_code, key, section, label, field_type in extras:
-        template = JobCardTemplate.objects.filter(phase_code=phase_code, is_active=True).order_by("-version").first()
-        if template is None or template.fields.filter(field_key=key).exists():
-            continue
-        last = template.fields.order_by("-sort_order").values_list("sort_order", flat=True).first() or 0
-        JobCardField.objects.create(
-            template=template,
-            field_key=key,
-            section=section,
-            label=label,
-            field_type=field_type,
-            required=False,
-            sort_order=last + 1,
-        )
+        templates = JobCardTemplate.objects.filter(phase_code=phase_code, is_active=True)
+        if phase_code == "QC":
+            templates = templates.filter(checklist_key="")
+        for template in templates:
+            if template.fields.filter(field_key=key).exists():
+                continue
+            last = template.fields.order_by("-sort_order").values_list("sort_order", flat=True).first() or 0
+            JobCardField.objects.create(
+                template=template,
+                field_key=key,
+                section=section,
+                label=label,
+                field_type=field_type,
+                required=False,
+                sort_order=last + 1,
+            )
     JobCardField.objects.filter(
         template__phase_code="QC",
         template__is_active=True,

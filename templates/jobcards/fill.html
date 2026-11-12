@@ -1,14 +1,32 @@
 {% extends "base.html" %}
 {% load mqms %}
-{% block title %}{{ phase.name }} job card{% endblock %}
+{% block title %}{{ phase.name }} · {{ checklist_label }}{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
     <p class="crumbs"><a href="{% url 'machines:detail' machine.machine_id %}">{{ machine.machine_id }}</a> / {{ phase.name }}</p>
-    <p class="eyebrow">{{ template.name }} · v{{ template.version }}</p>
     <h1>{{ phase.name }} job card</h1>
+    <p class="muted">{{ machine.planning.model_description }}</p>
   </div>
 </div>
+<header class="sheet-top tone-{{ phase_tone }}" style="margin-bottom:16px">
+  <div class="sheet-brand">
+    {% if brand_logo %}<img class="brand-logo" src="{{ brand_logo }}" alt="{{ machine.planning.company }}">{% elif logo %}<img class="brand-logo" src="{{ logo.image.url }}" alt="Company logo">{% else %}<div class="brand-mark">IR</div>{% endif %}
+    <div>
+      <p class="sheet-plant">{{ machine.machine_id }} · {{ machine.planning.company }}</p>
+      <p class="sheet-machine-id">{{ machine.planning.ccn|default:"No CCN" }}</p>
+    </div>
+  </div>
+  <div class="sheet-title">
+    <span class="sheet-phase">{{ phase.name }}</span>
+    <strong class="sheet-checklist">{{ checklist_label }}</strong>
+    <span class="sheet-badge">{% if checklist_key %}Model checklist · v{{ template.version }}{% else %}Shared for all models · v{{ template.version }}{% endif %}</span>
+  </div>
+</header>
+<section class="card" style="margin-bottom:16px">
+  <h3 class="section-title">Planning details</h3>
+  {% include "includes/job_card_planning.html" %}
+</section>
 <div class="summary-grid">
   <div class="stack">
     {% include "includes/machine_summary.html" %}
@@ -34,7 +52,7 @@
     {% if prefilled_from_prior %}
       <div class="message message-success">Previous job-card answers are already filled. Change only what needs fixing, add the rework solved comment, then approve.</div>
     {% endif %}
-    {% include "includes/rework_panel.html" %}
+    {% if open_rework %}{% include "includes/rework_panel.html" %}{% endif %}
     {% for group in groups %}
       <h3 class="section-title">{{ group.name }}</h3>
       {% for field in group.fields %}
@@ -173,6 +191,7 @@
       {% endfor %}
     {% endfor %}
     <label class="field"><span class="field-label">Submission remarks</span><textarea class="field-input comment-input" name="remarks" rows="4" {% if not editable %}disabled{% endif %}>{{ saved_remarks }}</textarea></label>
+    {% if can_raise_rework and not open_rework %}{% include "includes/rework_panel.html" %}{% endif %}
     {% if qc_edit %}
       <p class="muted">Save changes stores the notes on this completed QC record. Photos are uploaded with the Upload photo button.</p>
       <div class="form-actions btn-row">
@@ -182,7 +201,7 @@
       <div class="form-actions btn-row">
         <button class="btn-ghost" name="action" value="draft" type="submit">Save draft</button>
         {% if can_raise_rework %}
-          <button class="btn-danger" name="action" value="rework" type="submit">Rework</button>
+          <button class="btn-danger" name="action" value="rework" type="submit" data-rework-toggle>Rework</button>
         {% endif %}
         <button class="btn-primary" name="action" value="approve" type="submit">Approved and go to next phase</button>
       </div>
@@ -190,7 +209,7 @@
       <div class="form-actions btn-row">
         <button class="btn-ghost" name="action" value="draft" type="submit">Save draft</button>
         {% if can_raise_rework %}
-          <button class="btn-danger" name="action" value="rework" type="submit">Rework</button>
+          <button class="btn-danger" name="action" value="rework" type="submit" data-rework-toggle>Rework</button>
         {% endif %}
         <button class="btn-primary" name="action" value="submit" type="submit">Approved and go to next phase</button>
       </div>

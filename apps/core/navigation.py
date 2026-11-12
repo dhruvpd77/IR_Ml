@@ -35,8 +35,7 @@ NAV_ITEMS = [
     {"label": "Register Machine", "url": "machines:create", "icon": "plus-circle", "roles": {Roles.PLANNING_DATA_ENTRY}},
     {"label": "Planning Excel", "url": "machines:import", "icon": "file-spreadsheet", "management": True, "highlight": ["import", "import_preview"]},
     {"label": "Model Catalog", "url": "machines:catalog", "icon": "file-spreadsheet", "roles": {Roles.PRODUCTION_LEADER}, "highlight": ["catalog"]},
-    {"label": "Serial numbers", "url": "workflow:planner", "icon": "hash", "roles": {Roles.PRODUCTION_LEADER}, "highlight": ["planner"]},
-    {"label": "Stations", "url": "workflow:production", "icon": "factory", "roles": {Roles.PRODUCTION_LEADER}, "highlight": ["production", "production_machine"]},
+    {"label": "Serial numbers", "url": "workflow:planner", "icon": "hash", "roles": {Roles.PRODUCTION_LEADER}, "highlight": ["planner", "production", "production_machine"]},
     {"label": "Assembly", "url": "workflow:phase", "args": ["ASSEMBLY"], "icon": "wrench", "roles": {Roles.ASSEMBLY}},
     {"label": "Electrical", "url": "workflow:phase", "args": ["ELECTRICAL"], "icon": "zap", "roles": {Roles.ELECTRICAL}},
     {"label": "Waiting Area", "url": "workflow:phase", "args": ["WAITING"], "icon": "hourglass", "roles": {Roles.TESTING}},
@@ -81,7 +80,7 @@ def home_phase(user):
     if user.is_management or getattr(user, "is_general_user", False):
         return None
     if user.role == Roles.PRODUCTION_LEADER:
-        return PhaseCode.PRODUCTION
+        return PhaseCode.PLANNER
     if user.role == Roles.TESTING:
         return PhaseCode.WAITING
     for phase, role in PHASE_ROLE.items():

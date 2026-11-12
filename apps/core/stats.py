@@ -35,8 +35,8 @@ CARD_META = {
     "tentative": {"label": "Tentative planned machines", "tone": "navy", "icon": "calendar-range", "limit": None},
     "balance": {"label": "Yet to register", "tone": "amber", "icon": "circle-minus", "limit": None},
     "today": {"label": "Registered today", "tone": "blue", "icon": "calendar-plus", "limit": PhaseCode.PLANNING},
-    "planning": {"label": "Planning and serial", "tone": "slate", "icon": "clipboard-list", "limit": PhaseCode.PLANNER},
-    "production": {"label": "With production", "tone": "blue", "icon": "map-pin", "limit": PhaseCode.PRODUCTION},
+    "planning": {"label": "Planning and serial", "tone": "slate", "icon": "clipboard-list", "limit": PhaseCode.PRODUCTION},
+    "production": {"label": "Planning and serial", "tone": "slate", "icon": "clipboard-list", "limit": PhaseCode.PRODUCTION},
     "line": {"label": "Under assembly", "tone": "amber", "icon": "wrench", "limit": PhaseCode.ELECTRICAL},
     "assembly": {"label": "In assembly", "tone": "amber", "icon": "wrench", "limit": PhaseCode.ASSEMBLY},
     "electrical": {"label": "In electrical", "tone": "amber", "icon": "zap", "limit": PhaseCode.ELECTRICAL},
@@ -110,8 +110,15 @@ def admin_stats(machine_type="", start=None, end=None, on_date=None, shift="", m
             ("today", "Registered today", machines.filter(created_at__date=today).count(), "blue", "calendar-plus", PhaseCode.PLANNING, "Already inside the total"),
         ]
     cards = lead + [
-        ("planning", "Planning and serial", machines.filter(status__in=[MachineStatus.DRAFT, MachineStatus.WITH_PLANNER]).count(), "slate", "clipboard-list", PhaseCode.PLANNER, ""),
-        ("production", "With production", machines.filter(status=MachineStatus.WITH_PRODUCTION).count(), "blue", "map-pin", PhaseCode.PRODUCTION, ""),
+        (
+            "planning",
+            "Planning and serial",
+            machines.filter(status__in=[MachineStatus.DRAFT, MachineStatus.WITH_PLANNER, MachineStatus.WITH_PRODUCTION]).count(),
+            "slate",
+            "clipboard-list",
+            PhaseCode.PRODUCTION,
+            "Serial number and station together",
+        ),
         ("line", "Under assembly", on_line.count(), "amber", "wrench", PhaseCode.ELECTRICAL, f"Assembly open {assembly_open} · Electrical open {electrical_open}"),
         ("waiting", "Waiting for test bay", machines.filter(status=MachineStatus.IN_WAITING).count(), "amber", "hourglass", PhaseCode.WAITING, "Assembly done · awaiting Testing"),
         ("testing", "In testing", machines.filter(status=MachineStatus.IN_TESTING).count(), "blue", "gauge", PhaseCode.TESTING, ""),
@@ -210,10 +217,10 @@ def machines_for_card(key, machine_type="", start=None, end=None, on_date=None, 
         return machines.order_by("machine_id")
     if key == "today":
         return machines.filter(created_at__date=today).order_by("machine_id")
-    if key == "planning":
-        return machines.filter(status__in=[MachineStatus.DRAFT, MachineStatus.WITH_PLANNER]).order_by("machine_id")
-    if key == "production":
-        return machines.filter(status=MachineStatus.WITH_PRODUCTION).order_by("machine_id")
+    if key in {"planning", "production"}:
+        return machines.filter(
+            status__in=[MachineStatus.DRAFT, MachineStatus.WITH_PLANNER, MachineStatus.WITH_PRODUCTION]
+        ).order_by("machine_id")
     if key == "line":
         return machines.filter(status=MachineStatus.IN_PRODUCTION).order_by("machine_id")
     if key == "assembly":

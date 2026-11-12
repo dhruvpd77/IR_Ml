@@ -14,7 +14,7 @@ from audit.utils import log_audit
 from core.constants import TEST_AREAS, MachineStatus, PhaseCode, PhaseStatus, Priority, Roles
 from core.http import paginate, querystring
 from machines.catalog import CatalogError, models_for, replace_catalog
-from machines.forms import ImportUploadForm, PlanningForm, PlanningFormSet, StationForm
+from machines.forms import ChecklistUploadForm, ImportUploadForm, PlanningForm, PlanningFormSet, StationForm
 from machines.importer import build_import_preview, confirm_import, error_workbook, planning_template_workbook
 from machines.floor import stations_by_line
 from machines.models import ImportBatch, Machine, MachineNote, PlanningCatalogItem, ProductionStation
@@ -65,10 +65,9 @@ def _actions(user, machine):
     for state in states:
         if not can_operate_phase(user, state.phase.code):
             continue
-        if state.phase.code == PhaseCode.PLANNER:
-            actions.append({"label": "Assign serial", "href": f"/workflow/planner/?focus={machine.machine_id}"})
-        elif state.phase.code == PhaseCode.PRODUCTION:
-            actions.append({"label": "Allocate station", "href": f"/workflow/production/{machine.machine_id}/"})
+        if state.phase.code in {PhaseCode.PLANNER, PhaseCode.PRODUCTION}:
+            if not any(item.get("label") == "Assign serial & station" for item in actions):
+                actions.append({"label": "Assign serial & station", "href": f"/workflow/planner/?focus={machine.machine_id}"})
         elif state.phase.code == PhaseCode.WAITING:
             actions.append({"label": "Assign test bay", "href": "/workflow/phase/WAITING/"})
         elif state.phase.code in PhaseCode.JOB_CARDS:
@@ -370,7 +369,7 @@ def set_test_area(request, machine_id):
 @require_POST
 def add_note(request, machine_id):
     machine = _machine_or_404(request.user, machine_id)
-    body = (request.POST.get("body") or "").strip()
+    body = (request.POST.get("body") or "").strip().upper()
     if body:
         MachineNote.objects.create(machine=machine, author=request.user, body=body[:2000])
         WorkflowEvent.objects.create(
@@ -404,33 +403,256 @@ def catalog_upload(request):
                 f"{result['created']} unique models are ready"
                 + (f". {result['skipped']} rows were skipped." if result["skipped"] else "."),
             )
+            word_count = PlanningCatalogItem.objects.filter(job_card_format="word").exclude(job_card_key="").count()
+            if word_count:
+                try:
+                    from jobcards.word_checklist_import import import_word_job_cards
+
+                    word_result = import_word_job_cards()
+                    word_msg = (
+                        f"Word job cards: {word_result['created']} created, "
+                        f"{word_result['updated']} refreshed."
+                    )
+                    if word_result["missing"]:
+                        messages.warning(
+                            request,
+                            word_msg + f" Missing files: {', '.join(word_result['missing'])}.",
+                        )
+                    else:
+                        messages.success(request, word_msg)
+                except Exception as exc:
+                    messages.warning(request, f"Model list saved, but Word job cards failed: {exc}")
             return redirect("machines:catalog")
     query = (request.GET.get("q") or "").strip()
+    brand = (request.GET.get("brand") or "").strip()
+    machine_type = (request.GET.get("type") or "").strip()
+    model_q = (request.GET.get("model") or "").strip()
+    ccn_q = (request.GET.get("ccn") or "").strip()
+    job_card_q = (request.GET.get("job_card") or "").strip()
+    format_q = (request.GET.get("format") or "").strip().lower()
     items = PlanningCatalogItem.objects.all()
     if query:
         items = items.filter(
-            Q(model_description__icontains=query) | Q(ccn__icontains=query) | Q(company__icontains=query) | Q(machine_type__icontains=query)
+            Q(model_description__icontains=query)
+            | Q(ccn__icontains=query)
+            | Q(company__icontains=query)
+            | Q(machine_type__icontains=query)
+            | Q(job_card_key__icontains=query)
         )
+    if brand:
+        items = items.filter(company=brand)
+    if machine_type:
+        items = items.filter(machine_type=machine_type)
+    if model_q:
+        items = items.filter(model_description__icontains=model_q)
+    if ccn_q:
+        items = items.filter(ccn__icontains=ccn_q)
+    if job_card_q == "__none__":
+        items = items.filter(job_card_key="")
+    elif job_card_q:
+        items = items.filter(job_card_key=job_card_q)
+    if format_q in {"excel", "word"}:
+        items = items.filter(job_card_format=format_q)
+    items = items.order_by("company", "machine_type", "model_description")
     latest = PlanningCatalogItem.objects.select_related("uploaded_by").order_by("-uploaded_at").first()
+    from jobcards.models import JobCardTemplate
+
+    checklist_count = (
+        JobCardTemplate.objects.filter(phase_code__in=["ASSEMBLY", "TESTING"], is_active=True)
+        .exclude(checklist_key="")
+        .values("checklist_key")
+        .distinct()
+        .count()
+    )
+    brands = list(PlanningCatalogItem.objects.order_by("company").values_list("company", flat=True).distinct())
+    types = list(PlanningCatalogItem.objects.order_by("machine_type").values_list("machine_type", flat=True).distinct())
+    job_cards = list(
+        PlanningCatalogItem.objects.exclude(job_card_key="")
+        .order_by("job_card_key")
+        .values_list("job_card_key", flat=True)
+        .distinct()
+    )
     return render(
         request,
         "machines/catalog.html",
         {
             "form": form,
+            "checklist_form": ChecklistUploadForm(),
             "page": paginate(request, items, 25),
             "query": query,
+            "filter_brand": brand,
+            "filter_type": machine_type,
+            "filter_model": model_q,
+            "filter_ccn": ccn_q,
+            "filter_job_card": job_card_q,
+            "filter_format": format_q,
+            "filter_brands": brands,
+            "filter_types": types,
+            "filter_job_cards": job_cards,
             "querystring": querystring(request),
             "total": PlanningCatalogItem.objects.count(),
+            "filtered_total": items.count(),
             "latest": latest,
+            "checklist_count": checklist_count,
         },
     )
+
+
+@roles_required(Roles.PRODUCTION_LEADER)
+def catalog_job_card(request):
+    """Read-only preview of Assembly + Testing fields for a catalog Job Card Detail name."""
+    from machines.catalog import normalize_job_card_format, normalize_job_card_key, resolve_checklist_key
+    from jobcards.models import JobCardTemplate
+
+    catalog_key = normalize_job_card_key(request.GET.get("key") or "")
+    if not catalog_key:
+        messages.error(request, "Choose a job card name from the catalog.")
+        return redirect("machines:catalog")
+    sample = PlanningCatalogItem.objects.filter(job_card_key=catalog_key).order_by("pk").first()
+    source_format = normalize_job_card_format(getattr(sample, "job_card_format", "") or "")
+    resolved = resolve_checklist_key(catalog_key, source_format) or catalog_key
+    lookup_keys = []
+    for key in (catalog_key, resolved):
+        if key and key.lower() not in {item.lower() for item in lookup_keys}:
+            lookup_keys.append(key)
+    phases = []
+    for phase_code, title in (("ASSEMBLY", "Assembly"), ("TESTING", "Testing")):
+        template = None
+        for key in lookup_keys:
+            template = (
+                JobCardTemplate.objects.filter(phase_code=phase_code, checklist_key__iexact=key, is_active=True)
+                .order_by("-version")
+                .first()
+            )
+            if template is None:
+                for candidate in JobCardTemplate.objects.filter(phase_code=phase_code, is_active=True).order_by(
+                    "-version"
+                ):
+                    if normalize_job_card_key(candidate.checklist_key).lower() == key.lower():
+                        template = candidate
+                        break
+            if template is not None:
+                break
+        fields = list(template.active_fields()) if template else []
+        sections = []
+        current = None
+        for field in fields:
+            if current is None or current["name"] != field.section:
+                current = {"name": field.section or "Fields", "fields": []}
+                sections.append(current)
+            current["fields"].append(field)
+        phases.append(
+            {
+                "code": phase_code,
+                "title": title,
+                "template": template,
+                "sections": sections,
+                "field_count": len(fields),
+            }
+        )
+    model_count = PlanningCatalogItem.objects.filter(job_card_key=catalog_key).count()
+    return render(
+        request,
+        "machines/catalog_job_card.html",
+        {
+            "catalog_key": catalog_key,
+            "resolved_key": resolved,
+            "source_format": source_format,
+            "aliased": resolved.lower() != catalog_key.lower(),
+            "phases": phases,
+            "model_count": model_count,
+            "missing": all(phase["template"] is None for phase in phases),
+        },
+    )
+
+
+@roles_required(Roles.PRODUCTION_LEADER)
+@require_POST
+def checklist_upload(request):
+    """Re-import UPDATED Production Checklists so Assembly/Testing fields match the Excel."""
+    import tempfile
+    from pathlib import Path
+
+    from jobcards.checklist_import import import_checklists_workbook
+
+    form = ChecklistUploadForm(request.POST, request.FILES)
+    if not form.is_valid():
+        messages.error(request, "Upload an Excel .xlsx Production Checklists workbook.")
+        return redirect("machines:catalog")
+    upload = form.cleaned_data["source"]
+    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+        for chunk in upload.chunks():
+            tmp.write(chunk)
+        tmp_path = Path(tmp.name)
+    try:
+        result = import_checklists_workbook(tmp_path)
+    except Exception as exc:
+        messages.error(request, f"Checklist import failed: {exc}")
+        return redirect("machines:catalog")
+    finally:
+        tmp_path.unlink(missing_ok=True)
+    log_audit(
+        request.user,
+        "checklists.import",
+        changes={"created": result["created"], "updated": result["updated"], "sheets": result["sheets"]},
+        request=request,
+    )
+    messages.success(
+        request,
+        f"Job cards updated from {result['sheets']} sheets: "
+        f"{result['created']} created, {result['updated']} refreshed.",
+    )
+    return redirect("machines:catalog")
+
+
+@roles_required(Roles.PRODUCTION_LEADER)
+@require_POST
+def word_checklist_import_view(request):
+    """Load Assembly/Testing cards from jobcard_word_file for Word-tagged catalog models."""
+    from jobcards.word_checklist_import import import_word_job_cards
+
+    try:
+        result = import_word_job_cards()
+    except Exception as exc:
+        messages.error(request, f"Word job card import failed: {exc}")
+        return redirect("machines:catalog")
+    log_audit(
+        request.user,
+        "checklists.word_import",
+        changes={
+            "created": result["created"],
+            "updated": result["updated"],
+            "missing": result["missing"],
+            "keys": result["keys"],
+        },
+        request=request,
+    )
+    msg = (
+        f"Word job cards: {result['created']} created, {result['updated']} refreshed "
+        f"({result['keys']} Word catalog names)."
+    )
+    if result["missing"]:
+        messages.warning(
+            request,
+            msg + f" Missing files for: {', '.join(result['missing'])}.",
+        )
+    else:
+        messages.success(request, msg)
+    return redirect("machines:catalog")
 
 
 @login_required
 def catalog_lookup(request):
     items = [
-        {"model": model, "ccn": ccn}
-        for model, ccn in models_for(request.GET.get("company", ""), request.GET.get("type", ""))
+        {
+            "model": model,
+            "ccn": ccn,
+            "job_card": job_card or "",
+            "job_card_format": (job_card_format or ""),
+        }
+        for model, ccn, job_card, job_card_format in models_for(
+            request.GET.get("company", ""), request.GET.get("type", "")
+        )
     ]
     return JsonResponse({"items": items})
 

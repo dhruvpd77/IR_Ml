@@ -175,6 +175,20 @@ class PlanningCatalogItem(models.Model):
     machine_type = models.CharField(max_length=120, db_index=True)
     model_description = models.CharField(max_length=240)
     ccn = models.CharField(max_length=80)
+    job_card_key = models.CharField(
+        max_length=160,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Checklist sheet name from Job Card Detail. Empty means no Assembly/Testing card.",
+    )
+    job_card_format = models.CharField(
+        max_length=16,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="excel = Production Checklists workbook; word = file in jobcard_word_file/.",
+    )
     uploaded_by = models.ForeignKey(
         User,
         null=True,

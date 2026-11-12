@@ -1,0 +1,20 @@
+{% load catalog_tags %}
+{% job_card_for machine as job_card_name %}
+<dl class="sheet-identity">
+  <div><dt>Planning date</dt><dd>{% if planning_date %}{{ planning_date|date:"d-M-Y" }}{% else %}{{ machine.created_at|date:"d-M-Y" }}{% endif %}</dd></div>
+  <div><dt>Brand</dt><dd>{{ machine.planning.company|default:"—" }}</dd></div>
+  <div><dt>Type</dt><dd>{{ machine.planning.machine_type|default:"—" }}</dd></div>
+  <div><dt>CCN</dt><dd>{{ machine.planning.ccn|default:"—" }}</dd></div>
+  <div class="wide"><dt>Model</dt><dd>{{ machine.planning.model_description|default:"—" }}</dd></div>
+  <div><dt>Machine serial</dt><dd>{{ machine.planner_serial|default:"—" }}</dd></div>
+  <div><dt>Work order</dt><dd>{{ machine.planning.work_order|default:"—" }}</dd></div>
+  <div><dt>Shift</dt><dd>{{ machine.planning.shift|default:"—" }}</dd></div>
+  <div><dt>Priority</dt><dd>{{ machine.priority_label }}</dd></div>
+  <div><dt>Calibration</dt><dd>{{ machine.planning.calibration|default:"—" }}</dd></div>
+  <div><dt>Test report at bar</dt><dd>{{ machine.planning.test_report_bar|default:"—" }}</dd></div>
+  <div><dt>Export packing</dt><dd>{{ machine.planning.export_packing_required|default:"—" }}</dd></div>
+  <div><dt>Customer inspection</dt><dd>{{ machine.planning.customer_inspection|default:"—" }}{% if machine.planning.customer_inspection_date %} · {{ machine.planning.customer_inspection_date|date:"d M Y" }}{% endif %}</dd></div>
+  <div><dt>Station</dt><dd>{% if machine.station %}{% if machine.station.line_label %}{{ machine.station.line_label }} · {% endif %}{{ machine.station.name }}{% else %}—{% endif %}</dd></div>
+  {% if machine.test_area %}<div><dt>Testing station</dt><dd>{{ machine.test_area }}</dd></div>{% endif %}
+  <div class="wide accent"><dt>Job card</dt><dd>{% firstof checklist_label job_card_name "—" %}</dd></div>
+</dl>

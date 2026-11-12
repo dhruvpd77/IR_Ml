@@ -14,3 +14,5 @@ staticfiles/
 *.log
 .DS_Store
 Thumbs.db
+# Local Word COM cache only; committed _converted/ docx files are used on Linux.
+jobcard_word_file/.converted/

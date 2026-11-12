@@ -1,8 +1,19 @@
 {% if open_rework %}
-  <section class="rework-banner">
-    <p class="rework-eyebrow">Open rework · {{ open_rework.rework_code }}</p>
+  <section class="rework-banner rework-active-card" data-rework-active>
+    <p class="rework-eyebrow">Machine under rework · {{ open_rework.rework_code }}</p>
     <p class="comment-body">{{ open_rework.reason }}</p>
-    <p class="muted">Raised from {{ open_rework.rejected_phase.name }}{% if open_rework.rejected_by %} by {{ open_rework.rejected_by.display_name }}{% endif %}.</p>
+    <p class="comment-meta">
+      Raised from {{ open_rework.rejected_phase.name }}{% if open_rework.rejected_by %} by {{ open_rework.rejected_by.display_name }}{% endif %}
+      {% if open_rework.created_at %} · {{ open_rework.created_at|date:"d M Y, H:i" }}{% endif %}
+    </p>
+    <dl class="rework-machine-meta">
+      <div><dt>Machine</dt><dd>{{ machine.machine_id }}</dd></div>
+      <div><dt>Model</dt><dd>{{ machine.planning.model_description|default:"—" }}</dd></div>
+      <div><dt>Work order</dt><dd>{{ machine.planning.work_order|default:"—" }}</dd></div>
+      <div><dt>CCN</dt><dd>{{ machine.planning.ccn|default:"—" }}</dd></div>
+      <div><dt>Serial</dt><dd>{{ machine.planner_serial|default:"—" }}</dd></div>
+      <div><dt>Brand / Type</dt><dd>{{ machine.planning.company|default:"—" }} · {{ machine.planning.machine_type|default:"—" }}</dd></div>
+    </dl>
   </section>
   {% if editable %}
     <label class="field {% if field_errors.corrective_action %}is-missing{% endif %}">
@@ -14,12 +25,23 @@
 {% endif %}
 
 {% if can_raise_rework %}
-  <section class="rework-raise card" data-rework-raise data-optional>
-    <h3 class="section-title">Raise rework <span class="muted" style="text-transform:none;letter-spacing:0;font-size:13px">(optional)</span></h3>
-    <p class="muted">Only fill this when you press <strong>Rework</strong>. For normal approve/submit, leave it empty. Current answers are saved as a draft, then Production assigns a station and the machine follows the rework path back here.</p>
+  <section
+    class="rework-raise card"
+    data-rework-raise
+    data-optional
+    {% if not rework_raise_open %}hidden{% endif %}
+  >
+    <h3 class="section-title">Raise rework</h3>
+    <p class="muted">Write the problem clearly. Filled answers are saved as a draft — empty checklist fields are not required for rework. Production Leader assigns a station next.</p>
     <label class="field">
-      <span class="field-label">Problem description <span class="muted">(only if raising rework)</span></span>
-      <textarea class="field-input rework-comment-input" name="rework_problem" rows="4" data-optional placeholder="Write the problem clearly. This text is shown large on every rework screen."></textarea>
+      <span class="field-label">Problem description *</span>
+      <textarea
+        class="field-input rework-comment-input"
+        name="rework_problem"
+        rows="4"
+        data-optional
+        placeholder="WRITE THE PROBLEM CLEARLY. THIS TEXT IS SHOWN LARGE ON EVERY REWORK SCREEN."
+      >{{ rework_problem_value|default:"" }}</textarea>
     </label>
   </section>
 {% endif %}

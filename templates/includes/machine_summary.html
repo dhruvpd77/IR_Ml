@@ -1,13 +1,15 @@
-{% load mqms %}
+{% load mqms catalog_tags %}
+{% job_card_for machine as job_card_name %}
 <section class="card">
   <p class="eyebrow">{{ machine.machine_id }}</p>
   <h2>{{ machine.planning.model_description }}</h2>
-  <p class="muted">{{ machine.planning.company }}</p>
+  <p class="muted">{{ machine.planning.company }}{% if job_card_name %} · Job card {{ job_card_name }}{% endif %}</p>
   <dl class="meta-list">
     <div><dt>Work order</dt><dd>{{ machine.planning.work_order }}</dd></div>
     <div><dt>CCN</dt><dd>{{ machine.planning.ccn|default:"—" }}</dd></div>
     <div><dt>Brand</dt><dd>{{ machine.planning.company|default:"—" }}</dd></div>
     <div><dt>Type</dt><dd>{{ machine.planning.machine_type|default:"—" }}</dd></div>
+    <div><dt>Job card</dt><dd>{% if job_card_name %}<span class="sheet-badge">{{ job_card_name }}</span>{% else %}<span class="muted">No job card</span>{% endif %}</dd></div>
     <div><dt>Shift of machine</dt><dd>{{ machine.planning.shift|default:"—" }}</dd></div>
     <div><dt>Calibration</dt><dd>{{ machine.planning.calibration|default:"—" }}</dd></div>
     <div><dt>Test report bar</dt><dd>{{ machine.planning.test_report_bar|default:"—" }}</dd></div>

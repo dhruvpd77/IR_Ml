@@ -1,10 +1,13 @@
-"""Active job cards. Assembly and testing follow JOB CARD.xlsx. Electrical follows the Gujarati checklist. End of line follows the rotary defect list."""
+"""Shared job cards (Electrical / EOL / QC). Assembly and Testing are model-wise via import_model_job_cards."""
 
 from jobcards.official import OFFICIAL
 
+# Runtime shared templates only — Assembly/Testing come from checklist sheets.
+SHARED_PHASES = ("ELECTRICAL", "EOL", "QC")
+
 DEFAULT_TEMPLATES = {
-    phase: {"name": spec["name"], "description": spec["description"], "fields": spec["fields"]}
-    for phase, spec in OFFICIAL.items()
+    phase: {"name": OFFICIAL[phase]["name"], "description": OFFICIAL[phase]["description"], "fields": OFFICIAL[phase]["fields"]}
+    for phase in ("ELECTRICAL", "EOL")
 }
 
 DEFAULT_TEMPLATES["QC"] = {
@@ -14,6 +17,12 @@ DEFAULT_TEMPLATES["QC"] = {
         ("qc_photo", "Inspection photos", "Inspection photos", "image", False, "", ""),
         ("qc_notes", "Release", "Quality notes", "long_text", False, "", ""),
     ],
+}
+
+# Legacy unscoped Assembly/Testing field packs (demos/tests copy these onto a checklist_key).
+LEGACY_PHASE_TEMPLATES = {
+    phase: {"name": OFFICIAL[phase]["name"], "description": OFFICIAL[phase]["description"], "fields": OFFICIAL[phase]["fields"]}
+    for phase in ("ASSEMBLY", "TESTING")
 }
 
 TEMPLATE_MARKERS = {

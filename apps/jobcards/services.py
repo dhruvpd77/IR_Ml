@@ -32,10 +32,73 @@ class JobCardError(Exception):
         self.field_errors = field_errors or {}
 
 
-def active_template(phase_code):
+MODEL_SCOPED_PHASES = {PhaseCode.ASSEMBLY, PhaseCode.TESTING}
+
+
+def active_template(phase_code, machine=None):
+    """Return the active job card for this phase.
+
+    Assembly/Testing are model-wise via planning catalog job_card_key.
+    Electrical/EOL/QC stay shared (checklist_key blank).
+    """
+    if phase_code in MODEL_SCOPED_PHASES:
+        from machines.catalog import (
+            job_card_format_for_machine,
+            job_card_key_for_machine,
+            normalize_job_card_key,
+            resolve_checklist_key,
+        )
+
+        if machine is None:
+            raise JobCardError("Open this job card from a machine so the correct model checklist can load.")
+        catalog_key = normalize_job_card_key(job_card_key_for_machine(machine))
+        if not catalog_key:
+            raise JobCardError("No job card is mapped for this model.")
+        source_format = job_card_format_for_machine(machine)
+        # Try catalog key first, then Excel sheet alias when format is excel.
+        candidates = []
+        for key in (catalog_key, resolve_checklist_key(catalog_key, source_format)):
+            if key and key.lower() not in {item.lower() for item in candidates}:
+                candidates.append(key)
+        # Word row with no matching file can still use an Excel sheet of the same name.
+        if source_format == "word":
+            excel_key = resolve_checklist_key(catalog_key, "excel")
+            if excel_key and excel_key.lower() not in {item.lower() for item in candidates}:
+                candidates.append(excel_key)
+        template = None
+        for key in candidates:
+            template = (
+                JobCardTemplate.objects.filter(
+                    phase_code=phase_code,
+                    checklist_key__iexact=key,
+                    is_active=True,
+                )
+                .order_by("-version")
+                .first()
+            )
+            if template is None:
+                for candidate in JobCardTemplate.objects.filter(phase_code=phase_code, is_active=True).order_by(
+                    "-version"
+                ):
+                    if normalize_job_card_key(candidate.checklist_key).lower() == key.lower():
+                        template = candidate
+                        break
+            if template is not None:
+                break
+        if template is None:
+            raise JobCardError("Job card is not available for this model.")
+        return template
+
     template = (
-        JobCardTemplate.objects.filter(phase_code=phase_code, is_active=True).order_by("-version").first()
+        JobCardTemplate.objects.filter(phase_code=phase_code, checklist_key="", is_active=True)
+        .order_by("-version")
+        .first()
     )
+    if template is None:
+        # Legacy rows created before checklist_key existed
+        template = (
+            JobCardTemplate.objects.filter(phase_code=phase_code, is_active=True).order_by("-version").first()
+        )
     if template is None:
         raise JobCardError("No active job card template is configured for this department.")
     return template
@@ -255,7 +318,7 @@ def _phase_submission(machine, phase_code, closed_message):
         if submission is None:
             submission = JobCardSubmission.objects.create(
                 machine=machine,
-                template=active_template(phase_code),
+                template=active_template(phase_code, machine),
                 phase_code=phase_code,
                 cycle=state.cycle,
                 status=JobCardSubmission.Status.DRAFT,
@@ -282,7 +345,7 @@ def _phase_field(submission, field_key, missing_message):
     field = submission.template.fields.filter(field_key=field_key, is_active=True).first()
     if field is not None:
         return field
-    current = active_template(submission.phase_code)
+    current = active_template(submission.phase_code, submission.machine)
     field = current.fields.filter(field_key=field_key, is_active=True).first() if current else None
     if field is None:
         raise JobCardError(missing_message)
@@ -424,7 +487,7 @@ def persist_submission(
     files = files or {}
     answers = answers or {}
     template = template or (replace.template if replace is not None else None) or (
-        supersedes.template if supersedes else active_template(phase_code)
+        supersedes.template if supersedes else active_template(phase_code, machine)
     )
     fields = list(template.active_fields())
     strict = status == JobCardSubmission.Status.SUBMITTED
@@ -584,7 +647,7 @@ def _prepare_value(field, raw, upload, must_fill, errors):
         return {}
     if ftype == FieldType.SIGNATURE:
         data = raw if isinstance(raw, dict) else {"name": raw or "", "confirmed": False}
-        name = str(data.get("name") or "").strip()
+        name = str(data.get("name") or "").strip().upper()
         confirmed = bool(data.get("confirmed"))
         if must_fill(field) and (not name or not confirmed):
             errors[field.field_key] = MISSING
@@ -673,7 +736,7 @@ def _prepare_value(field, raw, upload, must_fill, errors):
             errors[field.field_key] = "Enter a valid time."
             return None
         return {"value_time": parsed, "value_text": parsed.strftime("%H:%M")}
-    text = "" if raw is None else str(raw).strip()
+    text = "" if raw is None else str(raw).strip().upper()
     if must_fill(field) and not text:
         errors[field.field_key] = MISSING
         return None

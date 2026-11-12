@@ -15,6 +15,13 @@ def attachment_upload(instance, filename):
 
 class JobCardTemplate(models.Model):
     phase_code = models.CharField(max_length=32, choices=PhaseCode.CHOICES)
+    checklist_key = models.CharField(
+        max_length=160,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Production checklist sheet key for model-wise Assembly/Testing. Blank = shared phase card.",
+    )
     name = models.CharField(max_length=160)
     description = models.TextField(blank=True)
     version = models.PositiveIntegerField(default=1)
@@ -29,10 +36,17 @@ class JobCardTemplate(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ["phase_code", "-version"]
-        unique_together = [("phase_code", "version")]
+        ordering = ["phase_code", "checklist_key", "-version"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["phase_code", "checklist_key", "version"],
+                name="uniq_jobcard_phase_checklist_version",
+            )
+        ]
 
     def __str__(self):
+        if self.checklist_key:
+            return f"{self.name} · {self.checklist_key} v{self.version}"
         return f"{self.name} v{self.version}"
 
     def active_fields(self):

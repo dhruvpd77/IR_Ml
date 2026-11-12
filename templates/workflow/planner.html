@@ -5,31 +5,65 @@
 <div class="page-head">
   <div>
     <p class="eyebrow">Production leader</p>
-    <h1>Assign serial numbers</h1>
-    <p class="muted">Give each machine its serial. It then waits on Stations. Assembly and Electrical open together after the station is set, and Testing opens only when both are finished.</p>
+    <h1>Assign serial and station</h1>
+    <p class="muted">Enter the serial and choose the station in one step. Assembly and Electrical open together after you save. Testing opens only when both are finished.</p>
   </div>
   {% include "includes/fullscreen.html" %}
 </div>
 <form method="get" class="filters"><input class="field-input" type="search" name="q" value="{{ query }}" placeholder="Machine or work order"><button class="btn-ghost" type="submit">Search</button></form>
-<form method="post">
+<form method="post" data-checked-rows=".machine-check" data-checked-empty="Tick at least one machine, then enter its serial and station.">
   {% csrf_token %}
   <div class="table-wrap"><table class="data-table">
-    <thead><tr><th><input data-select-all=".machine-check" type="checkbox"></th><th>View</th><th>Machine</th><th>Work order</th><th>Model</th><th>Priority</th><th>Serial number</th></tr></thead>
+    <thead>
+      <tr>
+        <th><input data-select-all=".machine-check" type="checkbox"></th>
+        <th>View</th>
+        <th>Machine</th>
+        <th>Work order</th>
+        <th>Model</th>
+        <th>Priority</th>
+        <th>Serial number</th>
+        <th>Station</th>
+      </tr>
+    </thead>
     <tbody>
-      {% for machine in page %}
-        <tr>
-          <td><input class="machine-check" type="checkbox" name="machines" value="{{ machine.machine_id }}"></td>
+      {% for row in rows %}
+        {% with machine=row.machine %}
+        <tr class="{% if focus == machine.machine_id %}is-focus{% endif %}">
+          <td><input class="machine-check" type="checkbox" name="machines" value="{{ machine.machine_id }}" {% if focus == machine.machine_id %}checked{% endif %}></td>
           <td><a class="btn-ghost btn-view" href="{% url 'machines:detail' machine.machine_id %}">View</a></td>
           <td><a class="machine-link" href="{% url 'machines:detail' machine.machine_id %}">{{ machine.machine_id }}</a></td>
           <td>{{ machine.planning.work_order }}</td>
           <td>{{ machine.planning.model_description }}</td>
           <td><span class="{{ machine.priority|badge_class }}">{{ machine.priority_label }}</span></td>
-          <td><input class="field-input" name="serial_{{ machine.machine_id }}" value="{{ machine.planner_serial|default:'' }}" placeholder="Serial"></td>
+          <td>
+            {% if row.needs_serial %}
+              <input class="field-input" name="serial_{{ machine.machine_id }}" value="{{ machine.planner_serial|default:'' }}" placeholder="Serial" autocomplete="off" data-row-required>
+            {% else %}
+              <input type="hidden" name="serial_{{ machine.machine_id }}" value="{{ machine.planner_serial|default:'' }}">
+              <strong>{{ machine.planner_serial|default:"—" }}</strong>
+            {% endif %}
+          </td>
+          <td>
+            <select class="field-input" name="station_{{ machine.machine_id }}" data-row-required>
+              <option value="">Select station</option>
+              {% for group in station_groups %}
+                <optgroup label="{{ group.label }}">
+                  {% for station in group.stations %}
+                    <option value="{{ station.pk }}" {% if machine.station_id == station.pk %}selected{% endif %}>{{ station.name }}</option>
+                  {% endfor %}
+                </optgroup>
+              {% endfor %}
+            </select>
+          </td>
         </tr>
-      {% empty %}<tr><td colspan="7" class="empty">No machines are waiting for a serial number.</td></tr>{% endfor %}
+        {% endwith %}
+      {% empty %}
+        <tr><td colspan="8" class="empty">No machines are waiting for a serial number or station.</td></tr>
+      {% endfor %}
     </tbody>
   </table></div>
-  <div class="toolbar" style="margin-top:12px"><button class="btn-primary" type="submit">Save serials and send to stations</button></div>
+  <div class="toolbar" style="margin-top:12px"><button class="btn-primary" type="submit">Save serials and stations</button></div>
 </form>
 {% include "includes/pagination.html" %}
 {% endblock %}

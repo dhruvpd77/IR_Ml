@@ -61,7 +61,7 @@ def fill(request, phase_code, machine_id):
     phase = get_object_or_404(ProductionPhase, code=phase_code, is_active=True)
     state = machine.phase_states.filter(phase=phase).first()
     try:
-        template = active_template(phase_code)
+        template = active_template(phase_code, machine)
     except JobCardError as exc:
         messages.error(request, str(exc))
         return redirect("machines:detail", machine.machine_id)
@@ -107,6 +107,8 @@ def fill(request, phase_code, machine_id):
     values, existing_files = submission_form_state(record)
     field_errors = {}
     chosen_area = machine.test_area
+    rework_raise_open = False
+    rework_problem_value = ""
     if request.method == "POST":
         if not editable:
             raise PermissionDenied
@@ -114,7 +116,13 @@ def fill(request, phase_code, machine_id):
         remarks = request.POST.get("remarks", "")
         corrective = request.POST.get("corrective_action", "")
         action = request.POST.get("action") or "submit"
-        skip_required = action in {"submit", "approve", "update"} and request.user.is_management
+        rework_problem_value = (request.POST.get("rework_problem") or request.POST.get("reason") or "")
+        rework_raise_open = action == "rework"
+        # Rework and draft never force every checklist field — only keep what was filled.
+        skip_required = (
+            action in {"draft", "rework"}
+            or (action in {"submit", "approve", "update"} and request.user.is_management)
+        )
         require_all = action in {"submit", "approve", "update"} and not skip_required
         area = (request.POST.get("test_area") or "").strip()
         chosen_area = area
@@ -155,7 +163,7 @@ def fill(request, phase_code, machine_id):
                         machine,
                         request.user,
                         phase_code,
-                        request.POST.get("rework_problem") or request.POST.get("reason") or "",
+                        rework_problem_value,
                         answers=answers,
                         files=uploads,
                         remarks=remarks,
@@ -237,6 +245,14 @@ def fill(request, phase_code, machine_id):
         group["rows"] = rows
     sheet = phase_code in {PhaseCode.ASSEMBLY, PhaseCode.TESTING, PhaseCode.EOL, PhaseCode.ELECTRICAL}
     planning = machine.planning
+    checklist_key = (getattr(template, "checklist_key", "") or "").strip()
+    phase_tones = {
+        PhaseCode.ASSEMBLY: "assembly",
+        PhaseCode.ELECTRICAL: "electrical",
+        PhaseCode.TESTING: "testing",
+        PhaseCode.EOL: "eol",
+        PhaseCode.QC: "qc",
+    }
     return render(
         request,
         "jobcards/sheet.html" if sheet else "jobcards/fill.html",
@@ -249,6 +265,9 @@ def fill(request, phase_code, machine_id):
             "phase": phase,
             "state": state,
             "template": template,
+            "checklist_key": checklist_key,
+            "checklist_label": checklist_key or "Shared checklist",
+            "phase_tone": phase_tones.get(phase_code, "assembly"),
             "groups": groups,
             "values": values,
             "existing_files": existing_files,
@@ -263,6 +282,8 @@ def fill(request, phase_code, machine_id):
             "rework_open": bool(state and state.rework_open) or bool(active_rework(machine)),
             "open_rework": active_rework(machine),
             "can_raise_rework": editable and phase_code in REWORK_ORIGINS and not active_rework(machine) and not qc_edit,
+            "rework_raise_open": rework_raise_open,
+            "rework_problem_value": rework_problem_value,
             "steps": tracking_steps(machine),
             "history": history,
             "is_qc": phase_code == PhaseCode.QC,

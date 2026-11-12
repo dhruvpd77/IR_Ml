@@ -1,11 +1,12 @@
 {% extends "base.html" %}
 {% load mqms %}
-{% block title %}{{ phase.name }} job card{% endblock %}
+{% block title %}{{ phase.name }} · {{ checklist_label }}{% endblock %}
 {% block content %}
 <div class="page-head no-print">
   <div>
     <p class="crumbs"><a href="{% url 'machines:detail' machine.machine_id %}">{{ machine.machine_id }}</a> / {{ phase.name }}</p>
     <h1>{{ phase.name }} job card</h1>
+    <p class="muted">Checklist <strong>{{ checklist_label }}</strong> · {{ machine.planning.model_description }}</p>
   </div>
   <a class="btn-ghost" href="{% url 'machines:detail' machine.machine_id %}">View record</a>
 </div>
@@ -13,24 +14,22 @@
 {% if prefilled_from_prior %}<p class="message message-success">Previous job-card answers are already filled. Change only what needs fixing, add the rework solved comment, then approve.</p>{% endif %}
 <form method="post" class="job-sheet card" {% if editable and not request.user.is_management %}{% if phase.code == "ELECTRICAL" %}data-require-ok-only="1"{% else %}data-require-all="1"{% endif %}{% endif %} {% if rework_open %}data-confirm="Submit the corrective action?"{% endif %}>
   {% csrf_token %}
-  <header class="sheet-top">
+  <header class="sheet-top tone-{{ phase_tone }}">
     <div class="sheet-brand">
       {% if brand_logo %}<img class="brand-logo" src="{{ brand_logo }}" alt="{{ machine.planning.company }}">{% elif logo %}<img class="brand-logo" src="{{ logo.image.url }}" alt="Company logo">{% else %}<div class="brand-mark">IR</div>{% endif %}
-      <p>Ingersoll Rand (I) Ltd.<br>21-30 GIDC Industrial Estate,<br>Naroda, Ahmedabad- 382330<br>Gujarat, India</p>
+      <div>
+        <p class="sheet-plant">Ingersoll Rand (I) Ltd. · Naroda, Ahmedabad</p>
+        <p class="sheet-machine-id">{{ machine.machine_id }}</p>
+      </div>
     </div>
     <div class="sheet-title">
-      <strong>OIL FREE IRN-SEEIRA-DX</strong>
-      <span>ULTRA COOLANT OIL</span>
+      <span class="sheet-phase">{{ phase.name }}</span>
+      <strong class="sheet-checklist">{{ checklist_label }}</strong>
+      <span class="sheet-badge">{% if checklist_key %}Model checklist · v{{ template.version }}{% else %}Shared for all models · v{{ template.version }}{% endif %}</span>
     </div>
   </header>
-  <dl class="sheet-identity">
-    <div><dt>Planning date</dt><dd>{{ planning_date|date:"d-M-Y" }}</dd></div>
-    <div class="wide"><dt>Model</dt><dd>{{ machine.planning.model_description }}</dd></div>
-    <div><dt>Machine serial number</dt><dd>{{ machine.planner_serial|default:"—" }}</dd></div>
-    <div><dt>Work order number</dt><dd>{{ machine.planning.work_order }}</dd></div>
-    <div><dt>CCN</dt><dd>{{ machine.planning.ccn|default:"—" }}</dd></div>
-  </dl>
-  {% include "includes/rework_panel.html" %}
+  {% include "includes/job_card_planning.html" %}
+  {% if open_rework %}{% include "includes/rework_panel.html" %}{% endif %}
   {% if phase.code == "TESTING" %}
     <label class="field {% if test_area_error %}is-missing{% endif %}">
       <span class="field-label">Testing station</span>
@@ -84,11 +83,12 @@
       {% endif %}
     </section>
   {% endfor %}
+  {% if can_raise_rework and not open_rework %}{% include "includes/rework_panel.html" %}{% endif %}
   {% if editable %}
     <div class="btn-row no-print">
       <button class="btn-ghost" name="action" value="draft" type="submit">Save draft</button>
       {% if can_raise_rework %}
-        <button class="btn-danger" name="action" value="rework" type="submit">Rework</button>
+        <button class="btn-danger" name="action" value="rework" type="submit" data-rework-toggle>Rework</button>
       {% endif %}
       <button class="btn-primary" name="action" value="submit" type="submit">Approved and go to next phase</button>
     </div>

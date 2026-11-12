@@ -32,7 +32,11 @@ function paintModels(select, items, query, selected) {
   const needle = (query || "").trim().toLowerCase();
   const matches = (items || []).filter((item) => {
     if (!needle) return true;
-    return item.model.toLowerCase().includes(needle) || String(item.ccn || "").toLowerCase().includes(needle);
+    return (
+      item.model.toLowerCase().includes(needle) ||
+      String(item.ccn || "").toLowerCase().includes(needle) ||
+      String(item.job_card || "").toLowerCase().includes(needle)
+    );
   });
   if (selected && !matches.some((item) => item.model === selected)) {
     const current = (items || []).find((item) => item.model === selected);
@@ -41,8 +45,12 @@ function paintModels(select, items, query, selected) {
   select.replaceChildren();
   select.add(new Option(matches.length ? "Select" : "No matching model", ""));
   matches.forEach((item) => {
-    const option = new Option(item.ccn ? `${item.model}  ·  ${item.ccn}` : item.model, item.model);
+    const parts = [item.model];
+    if (item.ccn) parts.push(item.ccn);
+    if (item.job_card) parts.push(item.job_card);
+    const option = new Option(parts.join("  ·  "), item.model);
     option.setAttribute("data-ccn", item.ccn || "");
+    option.setAttribute("data-job-card", item.job_card || "");
     select.add(option);
   });
   if (selected && ![...select.options].some((option) => option.value === selected)) {
@@ -113,6 +121,38 @@ function syncInspectionDates(root) {
   });
 }
 
+function forceUppercaseField(field) {
+  if (!field || field.disabled || field.readOnly) return;
+  if (field.tagName === "TEXTAREA") {
+    const start = field.selectionStart;
+    const end = field.selectionEnd;
+    const next = field.value.toUpperCase();
+    if (field.value !== next) {
+      field.value = next;
+      if (typeof start === "number" && typeof end === "number") field.setSelectionRange(start, end);
+    }
+    return;
+  }
+  if (field.tagName !== "INPUT") return;
+  const type = (field.type || "text").toLowerCase();
+  if (["checkbox", "radio", "file", "hidden", "date", "time", "number", "password", "range", "color"].includes(type)) {
+    return;
+  }
+  const start = field.selectionStart;
+  const end = field.selectionEnd;
+  const next = field.value.toUpperCase();
+  if (field.value !== next) {
+    field.value = next;
+    if (typeof start === "number" && typeof end === "number") {
+      try {
+        field.setSelectionRange(start, end);
+      } catch (error) {
+        /* some input types reject selection */
+      }
+    }
+  }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   const shell = document.getElementById("shell");
   const menu = document.getElementById("menuBtn");
@@ -122,14 +162,47 @@ document.addEventListener("DOMContentLoaded", () => {
     menu.addEventListener("click", () => shell.classList.toggle("sidebar-open"));
   }
   if (backdrop) backdrop.addEventListener("click", closeMenu);
+  document.addEventListener("input", (event) => forceUppercaseField(event.target));
+  document.addEventListener("blur", (event) => forceUppercaseField(event.target), true);
+  document.querySelectorAll("input, textarea").forEach((field) => forceUppercaseField(field));
   document.querySelectorAll(".nav-link").forEach((link) => link.addEventListener("click", closeMenu));
+  const syncCheckedRowRequirements = (form) => {
+    const selector = form.dataset.checkedRows;
+    if (!selector) return;
+    form.querySelectorAll(selector).forEach((box) => {
+      const row = box.closest("tr");
+      if (!row) return;
+      row.querySelectorAll("[data-row-required]").forEach((field) => {
+        if (box.checked) field.setAttribute("required", "required");
+        else field.removeAttribute("required");
+      });
+    });
+  };
+
   document.querySelectorAll("[data-select-all]").forEach((box) => {
     box.addEventListener("change", () => {
       document.querySelectorAll(box.dataset.selectAll).forEach((item) => {
         item.checked = box.checked;
+        item.dispatchEvent(new Event("change", { bubbles: true }));
       });
     });
   });
+
+  document.querySelectorAll("form[data-checked-rows]").forEach((form) => {
+    syncCheckedRowRequirements(form);
+    form.addEventListener("change", (event) => {
+      if (event.target.matches(form.dataset.checkedRows)) syncCheckedRowRequirements(form);
+    });
+    form.addEventListener("submit", (event) => {
+      syncCheckedRowRequirements(form);
+      const selected = form.querySelectorAll(`${form.dataset.checkedRows}:checked`);
+      if (!selected.length) {
+        event.preventDefault();
+        window.alert(form.dataset.checkedEmpty || "Select at least one row first.");
+      }
+    });
+  });
+
   document.querySelectorAll("form[data-confirm]").forEach((form) => {
     form.addEventListener("submit", (event) => {
       if (!window.confirm(form.dataset.confirm)) event.preventDefault();
@@ -224,7 +297,7 @@ document.addEventListener("DOMContentLoaded", () => {
       first.scrollIntoView({ behavior: "smooth", block: "center" });
     });
   });
-  // When pressing Rework, only the problem description is required.
+  // Rework: reveal the hidden problem box first; then require only that comment (not the full card).
   document.querySelectorAll("form").forEach((form) => {
     form.addEventListener("submit", (event) => {
       const submitter = event.submitter;
@@ -234,6 +307,14 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!panel || !field) return;
       form.querySelectorAll("[data-client-error]").forEach((node) => node.remove());
       form.querySelectorAll(".is-missing").forEach((node) => node.classList.remove("is-missing"));
+      if (panel.hasAttribute("hidden")) {
+        event.preventDefault();
+        panel.hidden = false;
+        panel.removeAttribute("hidden");
+        panel.scrollIntoView({ behavior: "smooth", block: "center" });
+        field.focus();
+        return;
+      }
       if (String(field.value || "").trim()) return;
       const box = field.closest(".field") || panel;
       box.classList.add("is-missing");

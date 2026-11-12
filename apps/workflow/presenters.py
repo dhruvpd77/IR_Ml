@@ -349,14 +349,16 @@ def _stamp(submission):
     return f"{who} · {when} · cycle {submission.cycle}"
 
 
-def _sheet_phase(code, title, color, submission, earlier):
+def _sheet_phase(code, title, color, submission, earlier, machine=None):
     from jobcards.services import JobCardError, active_template
 
     sections = []
-    try:
-        template = active_template(code)
-    except JobCardError:
-        template = None
+    template = submission.template if submission is not None else None
+    if template is None:
+        try:
+            template = active_template(code, machine or (submission.machine if submission is not None else None))
+        except JobCardError:
+            template = None
     if template is not None:
         sections = _section_groups(card_items(template, submission))
     old_cards = []
@@ -410,7 +412,7 @@ def job_card_view(machine, submissions, steps, reworks=None, until=None):
             continue
         records = sorted(grouped.get(code, []), key=lambda item: (item.cycle, item.revision, item.pk))
         current = records[-1] if records else None
-        phases.append(_sheet_phase(code, title, color, current, records[:-1]))
+        phases.append(_sheet_phase(code, title, color, current, records[:-1], machine=machine))
     rework_rows = []
     if until is None:
         for item in reworks or []:
@@ -430,9 +432,24 @@ def job_card_view(machine, submissions, steps, reworks=None, until=None):
                 {"label": "Status", "kind": "short_text", "value": machine.status_label, "tone": "", "gujarati": False},
             ]
         )
+    from machines.catalog import (
+        job_card_format_for_machine,
+        job_card_key_for_machine,
+        resolve_checklist_key,
+    )
+
+    catalog_key = job_card_key_for_machine(machine)
+    checklist_name = (
+        resolve_checklist_key(catalog_key, job_card_format_for_machine(machine)) or catalog_key or ""
+    )
     return {
         "machine_id": machine.machine_id,
         "entered_by": entered,
+        "header_model": planning.model_description or machine.machine_id,
+        "header_brand": planning.company or "—",
+        "header_type": planning.machine_type or "—",
+        "header_ccn": planning.ccn or "—",
+        "header_checklist": checklist_name or "—",
         "identity": [
             {"label": "Planning date", "value": date_text},
             {"label": "Model", "value": planning.model_description or "—"},
@@ -441,6 +458,7 @@ def job_card_view(machine, submissions, steps, reworks=None, until=None):
             {"label": "CCN", "value": planning.ccn or "—"},
             {"label": "Brand", "value": planning.company or "—"},
             {"label": "Type", "value": planning.machine_type or "—"},
+            {"label": "Job card", "value": checklist_name or "—"},
             {"label": "Priority", "value": machine.priority_label or "—"},
             {"label": "Calibration", "value": planning.calibration or "—"},
             {"label": "Shift of machine", "value": planning.shift or "—"},

@@ -7,6 +7,7 @@ from pathlib import Path
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db.models import Q
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -466,17 +467,16 @@ def dashboard(request):
     queue = queue.distinct()[:8]
     if phase_code == PhaseCode.PLANNING:
         queue_url = reverse("machines:list")
-    elif phase_code == PhaseCode.PLANNER:
+    elif phase_code in {PhaseCode.PLANNER, PhaseCode.PRODUCTION}:
         queue_url = reverse("workflow:planner")
-    elif phase_code == PhaseCode.PRODUCTION:
-        queue_url = reverse("workflow:production")
     else:
         queue_url = reverse("workflow:phase", args=[phase_code])
     serial_queue = []
     serial_url = ""
     if request.user.role == Roles.PRODUCTION_LEADER:
         serial_qs = visible_machines(request.user).filter(
-            phase_states__phase__code=PhaseCode.PLANNER, phase_states__status=PhaseStatus.IN_PROGRESS
+            Q(phase_states__phase__code=PhaseCode.PLANNER, phase_states__status=PhaseStatus.IN_PROGRESS)
+            | Q(phase_states__phase__code=PhaseCode.PRODUCTION, phase_states__status=PhaseStatus.IN_PROGRESS)
         )
         if machine_type:
             serial_qs = serial_qs.filter(planning__machine_type=machine_type)
