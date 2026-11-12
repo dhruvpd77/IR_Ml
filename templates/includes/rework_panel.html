@@ -43,5 +43,11 @@
         placeholder="WRITE THE PROBLEM CLEARLY. THIS TEXT IS SHOWN LARGE ON EVERY REWORK SCREEN."
       >{{ rework_problem_value|default:"" }}</textarea>
     </label>
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn-danger" name="action" value="rework" type="submit" formnovalidate data-rework-submit>
+        Submit rework
+      </button>
+      <button class="btn-ghost" type="button" data-rework-cancel>Cancel</button>
+    </div>
   </section>
 {% endif %}

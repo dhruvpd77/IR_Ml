@@ -297,7 +297,42 @@ document.addEventListener("DOMContentLoaded", () => {
       first.scrollIntoView({ behavior: "smooth", block: "center" });
     });
   });
-  // Rework: reveal the hidden problem box first; then require only that comment (not the full card).
+  // Rework: open the hidden problem box (button type=button), then Submit rework (formnovalidate).
+  const openReworkPanel = (form) => {
+    const panel = form.querySelector("[data-rework-raise]");
+    const field = form.querySelector('[name="rework_problem"]');
+    if (!panel || !field) return null;
+    panel.hidden = false;
+    panel.removeAttribute("hidden");
+    panel.classList.add("is-open");
+    panel.scrollIntoView({ behavior: "smooth", block: "center" });
+    field.focus();
+    return { panel, field };
+  };
+
+  document.addEventListener("click", (event) => {
+    const toggle = event.target.closest("[data-rework-toggle]");
+    if (toggle) {
+      const form = toggle.closest("form");
+      if (!form) return;
+      event.preventDefault();
+      openReworkPanel(form);
+      return;
+    }
+    const cancel = event.target.closest("[data-rework-cancel]");
+    if (cancel) {
+      const form = cancel.closest("form");
+      const panel = form && form.querySelector("[data-rework-raise]");
+      if (!panel) return;
+      event.preventDefault();
+      panel.hidden = true;
+      panel.setAttribute("hidden", "hidden");
+      panel.classList.remove("is-open");
+      const field = panel.querySelector('[name="rework_problem"]');
+      if (field) field.value = "";
+    }
+  });
+
   document.querySelectorAll("form").forEach((form) => {
     form.addEventListener("submit", (event) => {
       const submitter = event.submitter;
@@ -307,15 +342,15 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!panel || !field) return;
       form.querySelectorAll("[data-client-error]").forEach((node) => node.remove());
       form.querySelectorAll(".is-missing").forEach((node) => node.classList.remove("is-missing"));
-      if (panel.hasAttribute("hidden")) {
+      if (panel.hasAttribute("hidden") || panel.hidden) {
         event.preventDefault();
-        panel.hidden = false;
-        panel.removeAttribute("hidden");
-        panel.scrollIntoView({ behavior: "smooth", block: "center" });
-        field.focus();
+        openReworkPanel(form);
         return;
       }
-      if (String(field.value || "").trim()) return;
+      if (String(field.value || "").trim()) {
+        form.setAttribute("novalidate", "novalidate");
+        return;
+      }
       const box = field.closest(".field") || panel;
       box.classList.add("is-missing");
       if (!box.querySelector(".field-error")) {
