@@ -1068,6 +1068,154 @@ def _pressure_matrix_from_fields(fields):
     )
 
 
+_GEN_CHECK_LABEL = re.compile(
+    r"earth\s+checked|temp\.?\s*trip|amp\s+trip|moisture\s+checked",
+    re.I,
+)
+_VIB_AXIS_ONLY = re.compile(r"^(axial|vertical|horizontal)$", re.I)
+
+
+def _decorate_vibration_matrix(matrix):
+    """Add Excel-style LOAD/UNLOAD band headers when columns are LOAD 1/2 + UNLOAD 1/2."""
+    if not matrix:
+        return matrix
+    cols = [str(col).strip().upper() for col in matrix.get("columns") or []]
+    if cols == ["LOAD 1", "LOAD 2", "UNLOAD 1", "UNLOAD 2"]:
+        matrix["excel_bands"] = True
+        matrix["band_unit"] = "mm/s"
+    return matrix
+
+
+def _finalize_group_matrices(group):
+    name = group["name"]
+    if name == "Fill as per pressure rating":
+        matrix = _pressure_matrix_from_fields(group["fields"])
+        if matrix:
+            group["pressure_matrix"] = matrix
+    elif name == "Major parts details":
+        matrix = _matrix_from_fields(group["fields"], "parts")
+        if matrix:
+            group["parts_matrix"] = matrix
+    elif name in {"Vibration readings", "Vibration data", "During testing"}:
+        vib_fields = [field for field in group["fields"] if (field.help_text or "").startswith("vib|")]
+        if vib_fields:
+            matrix = _decorate_vibration_matrix(_matrix_from_fields(vib_fields, "vib"))
+            if matrix:
+                group["vibration_matrix"] = matrix
+                before, after, seen_vib = [], [], False
+                for field in group["fields"]:
+                    if (field.help_text or "").startswith("vib|"):
+                        seen_vib = True
+                        continue
+                    if seen_vib:
+                        after.append(field)
+                    else:
+                        before.append(field)
+                group["fields"] = before
+                group["fields_after_vibration"] = after
+    elif name == "Oil fill":
+        matrix = _matrix_from_fields(group["fields"], "oil")
+        if matrix:
+            group["oil_matrix"] = {
+                "rows": [{"name": row["name"], "field": next((cell for cell in row["cells"] if cell), None)} for row in matrix["rows"]],
+                "unit": "LTR",
+            }
+    elif name == "General check":
+        # Keep only Earth / Temp / Amp / Moisture style rows in the Y/N table.
+        kept = []
+        stray = []
+        for field in group["fields"]:
+            label = (field.label or "").strip()
+            if _VIB_AXIS_ONLY.match(label):
+                stray.append(field)
+            elif _GEN_CHECK_LABEL.search(label) or field.field_type == "yes_no":
+                kept.append(field)
+            else:
+                stray.append(field)
+        group["fields"] = kept or group["fields"]
+        group["stray_fields"] = stray if kept else []
+        if group["fields"] and all(
+            field.field_type in {"yes_no", "short_text"} and not _VIB_AXIS_ONLY.match((field.label or "").strip())
+            for field in group["fields"]
+        ):
+            group["general_check_table"] = True
+    elif name == "Belt tension reference":
+        notes = []
+        inputs = []
+        for field in group["fields"]:
+            help_text = field.help_text or ""
+            if help_text.startswith("belt_chart|") or "chart" in field.field_key:
+                notes.append(field)
+            else:
+                inputs.append(field)
+        if notes:
+            group["belt_notes"] = notes
+            group["fields"] = inputs
+
+
+def _build_post_testing_triad(groups):
+    """Merge General check + Vibration + Oil into one Excel-style side-by-side block."""
+    by_name = {group["name"]: group for group in groups}
+    general = by_name.get("General check")
+    oil = by_name.get("Oil fill")
+    vib = by_name.get("Vibration data") or by_name.get("Vibration readings")
+    during = by_name.get("During testing")
+
+    # Word cards often keep the vib grid inside During testing — lift it into the triad.
+    lifted_during_vib = False
+    if (not vib or not vib.get("vibration_matrix")) and during and during.get("vibration_matrix"):
+        vib = {
+            "name": "Vibration data",
+            "fields": [],
+            "vibration_matrix": during["vibration_matrix"],
+        }
+        lifted_during_vib = True
+
+    if not (
+        (general and general.get("general_check_table"))
+        or (vib and vib.get("vibration_matrix"))
+        or (oil and oil.get("oil_matrix"))
+    ):
+        return groups
+
+    triad = {
+        "name": "Post testing tables",
+        "fields": [],
+        "post_testing_triad": True,
+        "general": general if general and general.get("general_check_table") else None,
+        "vibration": vib if vib and vib.get("vibration_matrix") else None,
+        "oil": oil if oil and oil.get("oil_matrix") else None,
+    }
+    skip = set()
+    if triad["general"]:
+        skip.add(id(general))
+    if triad["oil"]:
+        skip.add(id(oil))
+    if triad["vibration"] and vib in groups and not lifted_during_vib:
+        skip.add(id(vib))
+    if lifted_during_vib and during is not None:
+        during.pop("vibration_matrix", None)
+
+    rebuilt = []
+    inserted = False
+    for group in groups:
+        if id(group) in skip:
+            if not inserted:
+                rebuilt.append(triad)
+                inserted = True
+            # Keep non-table leftovers from General check (if any).
+            if group is general and group.get("stray_fields"):
+                rebuilt.append({"name": "General check notes", "fields": group["stray_fields"]})
+            continue
+        if not inserted and group["name"] in {"Testing sign off", "Inspection video", "If not OK", "End of line"}:
+            rebuilt.append(triad)
+            inserted = True
+        rebuilt.append(group)
+    if not inserted:
+        rebuilt.append(triad)
+    return rebuilt
+
+
 def group_fields(fields):
     groups = []
     index = {}
@@ -1078,53 +1226,5 @@ def group_fields(fields):
             groups.append(index[section])
         index[section]["fields"].append(field)
     for group in groups:
-        name = group["name"]
-        if name == "Fill as per pressure rating":
-            matrix = _pressure_matrix_from_fields(group["fields"])
-            if matrix:
-                group["pressure_matrix"] = matrix
-        elif name == "Major parts details":
-            matrix = _matrix_from_fields(group["fields"], "parts")
-            if matrix:
-                group["parts_matrix"] = matrix
-        elif name in {"Vibration readings", "Vibration data", "During testing"}:
-            vib_fields = [field for field in group["fields"] if (field.help_text or "").startswith("vib|")]
-            if vib_fields:
-                matrix = _matrix_from_fields(vib_fields, "vib")
-                if matrix:
-                    group["vibration_matrix"] = matrix
-                    before, after, seen_vib = [], [], False
-                    for field in group["fields"]:
-                        if (field.help_text or "").startswith("vib|"):
-                            seen_vib = True
-                            continue
-                        if seen_vib:
-                            after.append(field)
-                        else:
-                            before.append(field)
-                    group["fields"] = before
-                    group["fields_after_vibration"] = after
-        elif name == "Oil fill":
-            matrix = _matrix_from_fields(group["fields"], "oil")
-            if matrix:
-                # Oil fill is a single-column LTR list (1ST/2ND/3RD/TOTAL).
-                group["oil_matrix"] = {
-                    "rows": [{"name": row["name"], "field": next((cell for cell in row["cells"] if cell), None)} for row in matrix["rows"]],
-                    "unit": "LTR",
-                }
-        elif name == "General check":
-            if group["fields"] and all(field.field_type == "yes_no" for field in group["fields"]):
-                group["general_check_table"] = True
-        elif name == "Belt tension reference":
-            notes = []
-            inputs = []
-            for field in group["fields"]:
-                help_text = field.help_text or ""
-                if help_text.startswith("belt_chart|") or "chart" in field.field_key:
-                    notes.append(field)
-                else:
-                    inputs.append(field)
-            if notes:
-                group["belt_notes"] = notes
-                group["fields"] = inputs
-    return groups
+        _finalize_group_matrices(group)
+    return _build_post_testing_triad(groups)

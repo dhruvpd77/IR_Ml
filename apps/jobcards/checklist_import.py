@@ -82,6 +82,209 @@ def _field_tuple(key, section, label, field_type="short_text", required=False, u
     return (key, section, label, field_type, required, unit, extra)
 
 
+RUNOUT_AXIS = ("Axial", "Radial", "Angular")
+_RUNOUT_HINT = re.compile(
+    r"run[\s\-]*out|રન\s*આઉટ|coupling|કપલિંગ|લખવી|લખવું|લખો|value|_{3,}",
+    re.I,
+)
+
+
+def _runout_axes_in_label(label: str) -> list[str]:
+    """Detect Axial/Radial/Angular even when glued to underscores (Axial______)."""
+    found = []
+    for axis in RUNOUT_AXIS:
+        if re.search(rf"(?<![A-Za-z]){axis}(?![A-Za-z])", label or "", re.I):
+            found.append(axis)
+    return found
+
+
+def _is_combined_runout_label(label: str) -> bool:
+    """True when one checklist line asks for Axial + Radial + Angular values together."""
+    axes = _runout_axes_in_label(label)
+    if len(axes) < 2:
+        return False
+    return bool(_RUNOUT_HINT.search(label or "")) or len(axes) >= 3
+
+
+def _runout_base_label(label: str) -> str:
+    text = label or ""
+    text = re.split(r"(?<![A-Za-z])Axial(?![A-Za-z])", text, maxsplit=1, flags=re.I)[0]
+    text = re.sub(r"^\d+[a-zA-Z]?\.\s*", "", text)
+    text = re.sub(r"_{2,}|…|\.{3,}", " ", text)
+    text = re.sub(r"\s+", " ", text).strip(" .-–,/")
+    return text
+
+
+def runout_decimal_fields(prefix, number, section, label, used):
+    """Split a combined Axial/Radial/Angular line into decimal value inputs."""
+    axes = _runout_axes_in_label(label)
+    if len(axes) < 2:
+        return []
+    base = _runout_base_label(label)
+    short_base = "SIERRA run-out" if re.search(r"sierra", label or "", re.I) else "Coupling run-out"
+    fields = []
+    for axis in axes:
+        # Keep labels short so Axial/Radial/Angular stay visible (label max 200).
+        if number:
+            shown = f"{number}. {short_base} — {axis}"
+        else:
+            shown = f"{short_base} — {axis}"
+        key_src = f"{number}_runout_{axis}" if number else f"runout_{axis}_{base or axis}"
+        fields.append(
+            (
+                _field_key(prefix, key_src, used),
+                section,
+                shown[:200],
+                "decimal",
+                False,
+                "",
+                "",
+            )
+        )
+    return fields
+
+
+def repair_general_check_tables(template=None):
+    """Fix General check rows: Y/N types, and move lone AXIAL/VERTICAL/HORIZONTAL into Vibration data."""
+    qs = JobCardField.objects.filter(is_active=True, section__iexact="General check").select_related("template")
+    if template is not None:
+        qs = qs.filter(template=template)
+    else:
+        qs = qs.filter(template__is_active=True)
+
+    fixed = 0
+    axis_pat = re.compile(r"^(axial|vertical|horizontal)$", re.I)
+    gen_pat = re.compile(r"earth\s+checked|temp\.?\s*trip|amp\s+trip|moisture\s+checked", re.I)
+    vib_cols = ("LOAD 1", "LOAD 2", "UNLOAD 1", "UNLOAD 2")
+
+    for field in list(qs.order_by("template_id", "sort_order", "pk")):
+        label = (field.label or "").strip()
+        if gen_pat.search(label) and field.field_type != "yes_no":
+            field.field_type = "yes_no"
+            field.save(update_fields=["field_type"])
+            fixed += 1
+            continue
+        if not axis_pat.match(label):
+            continue
+        axis = label.upper()
+        used = set(field.template.fields.values_list("field_key", flat=True))
+        sort = field.sort_order
+        with transaction.atomic():
+            field.is_active = False
+            field.save(update_fields=["is_active"])
+            for offset, col in enumerate(vib_cols):
+                key = _field_key("vib", f"{axis}_{col}", used)
+                JobCardField.objects.update_or_create(
+                    template=field.template,
+                    field_key=key,
+                    defaults={
+                        "section": "Vibration data",
+                        "label": f"{axis} — {col}",
+                        "field_type": "decimal",
+                        "required": False,
+                        "unit": "mm/s",
+                        "help_text": f"vib|{axis}|{col}",
+                        "options": [],
+                        "sort_order": sort + offset,
+                        "is_active": True,
+                    },
+                )
+        fixed += 1
+    return fixed
+
+
+def repair_runout_value_fields(template=None):
+    """Replace combined Axial/Radial/Angular yes/no (or text) lines with decimal inputs."""
+    qs = JobCardField.objects.filter(
+        is_active=True,
+        field_type__in=["yes_no", "short_text", "long_text"],
+    ).select_related("template")
+    if template is not None:
+        qs = qs.filter(template=template)
+    else:
+        qs = qs.filter(template__is_active=True)
+
+    fixed = 0
+    for field in qs.order_by("template_id", "sort_order", "pk"):
+        label = field.label or ""
+        if not _is_combined_runout_label(label):
+            continue
+        number_match = re.match(r"^(\d+[a-zA-Z]?)\.\s*", label)
+        number = number_match.group(1) if number_match else ""
+        prefix = (field.field_key.split("_", 1)[0] if field.field_key else "aft") or "aft"
+        used = set(field.template.fields.values_list("field_key", flat=True))
+        specs = runout_decimal_fields(prefix, number, field.section or "", label, used)
+        if not specs:
+            continue
+        with transaction.atomic():
+            field.is_active = False
+            field.save(update_fields=["is_active"])
+            for offset, (key, section, shown, ftype, required, unit, _extra) in enumerate(specs):
+                JobCardField.objects.update_or_create(
+                    template=field.template,
+                    field_key=key,
+                    defaults={
+                        "section": section,
+                        "label": shown,
+                        "field_type": ftype,
+                        "required": required,
+                        "unit": unit,
+                        "help_text": "",
+                        "options": [],
+                        "sort_order": field.sort_order + offset,
+                        "is_active": True,
+                    },
+                )
+        fixed += 1
+
+    # Shorten expanded run-out labels that were truncated or still carry the long Gujarati line.
+    # Never touch vibration matrix fields (help_text vib|...) or official single-axis keys.
+    decimal_qs = JobCardField.objects.filter(is_active=True, field_type="decimal")
+    if template is not None:
+        decimal_qs = decimal_qs.filter(template=template)
+    else:
+        decimal_qs = decimal_qs.filter(template__is_active=True)
+    for field in decimal_qs:
+        label = field.label or ""
+        help_text = field.help_text or ""
+        key = field.field_key or ""
+        if help_text.startswith("vib|"):
+            continue
+        if key in {"runout_axial", "runout_radial", "runout_angular"}:
+            continue
+        if "runout" not in key and "— " not in label and not _is_combined_runout_label(label):
+            continue
+        axis = next((name for name in RUNOUT_AXIS if re.search(rf"(?<![A-Za-z]){name}(?![A-Za-z])", label, re.I)), "")
+        if not axis:
+            if re.search(r"—\s*Axi", label) and "Axial" not in label:
+                axis = "Axial"
+            elif re.search(r"—\s*Rad", label) and "Radial" not in label:
+                axis = "Radial"
+            elif re.search(r"—\s*Ang", label) and "Angular" not in label:
+                axis = "Angular"
+        if not axis:
+            continue
+        # Only rewrite long/truncated/combined labels from Word expansion.
+        needs_shorten = (
+            _is_combined_runout_label(label)
+            or len(label) > 70
+            or (re.search(r"—\s*Axi", label) and "Axial" not in label)
+            or (re.search(r"—\s*Rad", label) and "Radial" not in label)
+            or (re.search(r"—\s*Ang", label) and "Angular" not in label)
+        )
+        if not needs_shorten:
+            continue
+        number_match = re.match(r"^(\d+[a-zA-Z]?)\.\s*", label)
+        number = number_match.group(1) if number_match else ""
+        short = "SIERRA run-out" if re.search(r"sierra", label, re.I) else "Coupling run-out"
+        shown = f"{number}. {short} — {axis}" if number else f"{short} — {axis}"
+        if field.label != shown:
+            field.label = shown
+            field.save(update_fields=["label"])
+            fixed += 1
+    return fixed
+
+
 def _split_number_label(cells):
     """Find a checklist number + label pair anywhere in the row."""
     for index, value in enumerate(cells):
@@ -319,13 +522,15 @@ def parse_sheet(worksheet, sheet_name):
                 continue
             number, label = _split_number_label(cells)
             if label:
-                if re.search(r"લિટર|liter|mm|ltr", label, re.I) and re.search(r"ઓઈલ|oil|ગેપ|gap", label, re.I):
+                prefix = "asm" if mode == "assembly" else "aud"
+                if _is_combined_runout_label(label):
+                    assembly_fields.extend(runout_decimal_fields(prefix, number, section, label, used))
+                elif re.search(r"લિટર|liter|mm|ltr", label, re.I) and re.search(r"ઓઈલ|oil|ગેપ|gap", label, re.I):
                     unit = "LTR" if re.search(r"લિટર|liter|ltr", label, re.I) else "mm"
                     assembly_fields.append(
                         (_field_key("asm", f"{number}_{label}", used), section, f"{number}. {label}"[:200], "decimal", False, unit, "")
                     )
                 else:
-                    prefix = "asm" if mode == "assembly" else "aud"
                     assembly_fields.append(_yes_no(prefix, number, section, label, used))
             continue
 
@@ -356,10 +561,14 @@ def parse_sheet(worksheet, sheet_name):
             # BEFORE TESTING row often has section title + number + label
             if not label:
                 continue
-            if re.search(r"લખવું|reading|rating|cfm|power|rpm|program|value|નું", label, re.I):
+            prefix = {"Before testing": "bef", "During testing": "dur", "After testing": "aft"}.get(test_section, "tst")
+            if _is_combined_runout_label(f"{number}. {label}" if number else label):
+                testing_fields.extend(
+                    runout_decimal_fields(prefix, number, test_section, f"{number}. {label}" if number else label, used)
+                )
+            elif re.search(r"લખવું|લખવી|reading|rating|cfm|power|rpm|program|value|નું", label, re.I):
                 testing_fields.append(_short("tst", f"{number}_{label}", test_section, used))
             else:
-                prefix = {"Before testing": "bef", "During testing": "dur", "After testing": "aft"}.get(test_section, "tst")
                 testing_fields.append(_yes_no(prefix, number, test_section, label, used))
             continue
 
@@ -504,7 +713,15 @@ def import_checklists_workbook(path):
                 else:
                     created += 1
                     results.append({"sheet": sheet_name, "phase": phase_code, "status": "created", "fields": len(fields)})
-    return {"created": created, "updated": updated, "empty": empty, "sheets": len(workbook.sheetnames), "details": results}
+    repaired = repair_runout_value_fields() + repair_general_check_tables()
+    return {
+        "created": created,
+        "updated": updated,
+        "empty": empty,
+        "sheets": len(workbook.sheetnames),
+        "details": results,
+        "runout_repaired": repaired,
+    }
 
 
 def find_checklist_sheet_name(workbook, job_card_key):

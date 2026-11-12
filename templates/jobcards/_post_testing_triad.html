@@ -1,0 +1,39 @@
+<div class="post-test-triad">
+  {% if group.general %}
+    <div class="post-test-card tone-general">
+      <div class="word-matrix general-check-table excel-grid">
+        <div class="word-matrix-head" style="grid-template-columns: 1.5fr .7fr;">
+          <span>GENERAL CHECK</span><span>Y/N</span>
+        </div>
+        {% for field in group.general.fields %}
+          <div class="word-matrix-row" style="grid-template-columns: 1.5fr .7fr;">
+            <p>{{ field.label }}</p>
+            <div>{% include "jobcards/input.html" with field=field %}</div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
+  {% if group.vibration %}
+    <div class="post-test-card tone-vibration">
+      {% include "jobcards/_vibration_table.html" with matrix=group.vibration.vibration_matrix %}
+    </div>
+  {% endif %}
+
+  {% if group.oil %}
+    <div class="post-test-card tone-oil">
+      <div class="word-matrix oil-fill-table excel-grid">
+        <div class="word-matrix-head" style="grid-template-columns: 1.1fr 1fr;">
+          <span>OIL FILL</span><span>LTR</span>
+        </div>
+        {% for row in group.oil.oil_matrix.rows %}
+          <div class="word-matrix-row" style="grid-template-columns: 1.1fr 1fr;">
+            <p>{{ row.name }}</p>
+            <div>{% if row.field %}{% include "jobcards/input.html" with field=row.field %}{% else %}<span class="muted">—</span>{% endif %}</div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+</div>

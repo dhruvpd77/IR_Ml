@@ -1,0 +1,35 @@
+{% with matrix=matrix|default:group.vibration_matrix %}
+<div class="word-matrix vibration-table excel-grid">
+  {% if matrix.excel_bands %}
+    <div class="vib-band-head">
+      <span class="vib-corner">VIBRATION DATA</span>
+      <span class="vib-band">LOAD ({{ matrix.band_unit|default:"mm/s" }})</span>
+      <span class="vib-band">UNLOAD ({{ matrix.band_unit|default:"mm/s" }})</span>
+    </div>
+    <div class="word-matrix-head vib-sub-head" style="grid-template-columns: 1.1fr repeat(4, minmax(64px, 1fr));">
+      <span></span><span>1</span><span>2</span><span>1</span><span>2</span>
+    </div>
+    {% for row in matrix.rows %}
+      <div class="word-matrix-row" style="grid-template-columns: 1.1fr repeat(4, minmax(64px, 1fr));">
+        <p>{{ row.name }}</p>
+        {% for field in row.cells %}
+          <div>{% if field %}{% include "jobcards/input.html" with field=field %}{% else %}<span class="muted">—</span>{% endif %}</div>
+        {% endfor %}
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="word-matrix-head" style="grid-template-columns: 1.2fr repeat({{ matrix.columns|length }}, minmax(90px, 1fr));">
+      <span>VIBRATION DATA</span>
+      {% for col in matrix.columns %}<span>{{ col }}</span>{% endfor %}
+    </div>
+    {% for row in matrix.rows %}
+      <div class="word-matrix-row" style="grid-template-columns: 1.2fr repeat({{ matrix.columns|length }}, minmax(90px, 1fr));">
+        <p>{{ row.name }}</p>
+        {% for field in row.cells %}
+          <div>{% if field %}{% include "jobcards/input.html" with field=field %}{% else %}<span class="muted">—</span>{% endif %}</div>
+        {% endfor %}
+      </div>
+    {% endfor %}
+  {% endif %}
+</div>
+{% endwith %}

@@ -43,10 +43,12 @@
     </label>
   {% endif %}
   {% for group in groups %}
-    <section class="sheet-section tone-section {% if group.name == 'If not OK' %}not-ok-section{% elif group.name == 'Fill as per pressure rating' %}tone-pressure{% elif group.name == 'Major parts details' or group.name == 'Assembly parts' or group.name == 'Ultra Coolant Oil' %}tone-parts{% elif group.name == 'Vibration readings' or group.name == 'Vibration data' %}tone-vibration{% elif group.name == 'Oil fill' %}tone-oil{% elif group.name == 'General check' %}tone-general{% elif group.name == 'Airend discharge temp' %}tone-temp{% elif group.name == 'Belt tension reference' %}tone-belt{% elif group.name == 'Final audit' or group.name == 'Spot audit' %}tone-audit{% endif %}" {% if group.name == "If not OK" %}data-not-ok hidden{% endif %}>
-      <h2>{{ group.name }}</h2>
-      {% if group.general_check_table %}
-        <div class="word-matrix general-check-table">
+    <section class="sheet-section tone-section {% if group.post_testing_triad %}tone-post-test{% elif group.name == 'If not OK' %}not-ok-section{% elif group.name == 'Fill as per pressure rating' %}tone-pressure{% elif group.name == 'Major parts details' or group.name == 'Assembly parts' or group.name == 'Ultra Coolant Oil' %}tone-parts{% elif group.name == 'Vibration readings' or group.name == 'Vibration data' %}tone-vibration{% elif group.name == 'Oil fill' %}tone-oil{% elif group.name == 'General check' %}tone-general{% elif group.name == 'Airend discharge temp' %}tone-temp{% elif group.name == 'Belt tension reference' %}tone-belt{% elif group.name == 'Final audit' or group.name == 'Spot audit' %}tone-audit{% endif %}" {% if group.name == "If not OK" %}data-not-ok hidden{% endif %}>
+      {% if not group.post_testing_triad %}<h2>{{ group.name }}</h2>{% endif %}
+      {% if group.post_testing_triad %}
+        {% include "jobcards/_post_testing_triad.html" %}
+      {% elif group.general_check_table %}
+        <div class="word-matrix general-check-table excel-grid">
           <div class="word-matrix-head" style="grid-template-columns: 1.6fr 1fr;">
             <span>GENERAL CHECK</span><span>Y/N</span>
           </div>
@@ -58,7 +60,7 @@
           {% endfor %}
         </div>
       {% elif group.oil_matrix %}
-        <div class="word-matrix oil-fill-table">
+        <div class="word-matrix oil-fill-table excel-grid">
           <div class="word-matrix-head" style="grid-template-columns: 1.2fr 1fr;">
             <span>OIL FILL</span><span>LTR</span>
           </div>
@@ -108,21 +110,27 @@
           </label>
         {% endif %}
       {% elif group.vibration_matrix %}
-        <p class="section-note">{% if group.name == "Vibration data" %}VIBRATION DATA — LOAD / UNLOAD (mm/s){% else %}Record vibration readings (mm/sec) and conformance to engg spec.{% endif %}</p>
-        <div class="word-matrix vibration-table">
-          <div class="word-matrix-head" style="grid-template-columns: 1.2fr repeat({{ group.vibration_matrix.columns|length }}, minmax(90px, 1fr));">
-            <span>{% if group.name == "Vibration data" %}AXIS{% else %}Position{% endif %}</span>
-            {% for col in group.vibration_matrix.columns %}<span>{{ col }}</span>{% endfor %}
+        {% if group.fields %}
+          <div class="check-list" style="margin-bottom:12px">
+            {% for field in group.fields %}
+              <div class="check-row {% if field.field_type != 'yes_no' %}check-extra{% endif %}">
+                <p>{{ field.label }}</p>
+                {% include "jobcards/input.html" with field=field %}
+              </div>
+            {% endfor %}
           </div>
-          {% for row in group.vibration_matrix.rows %}
-            <div class="word-matrix-row" style="grid-template-columns: 1.2fr repeat({{ group.vibration_matrix.columns|length }}, minmax(110px, 1fr));">
-              <p>{{ row.name }}</p>
-              {% for field in row.cells %}
-                <div>{% if field %}{% include "jobcards/input.html" with field=field %}{% else %}<span class="muted">—</span>{% endif %}</div>
-              {% endfor %}
-            </div>
-          {% endfor %}
-        </div>
+        {% endif %}
+        {% include "jobcards/_vibration_table.html" %}
+        {% if group.fields_after_vibration %}
+          <div class="check-list" style="margin-top:12px">
+            {% for field in group.fields_after_vibration %}
+              <div class="check-row {% if field.field_type != 'yes_no' %}check-extra{% endif %}">
+                <p>{{ field.label }}</p>
+                {% include "jobcards/input.html" with field=field %}
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
       {% elif group.belt_notes %}
         {% for note in group.belt_notes %}
           <div class="belt-chart">{% if note.help_text %}{% if note.help_text|slice:":11" == "belt_chart|" %}{{ note.help_text|slice:"11:" }}{% else %}{{ note.help_text }}{% endif %}{% else %}{{ note.label }}{% endif %}</div>
@@ -167,33 +175,6 @@
             </div>
           {% endfor %}
         </div>
-        {% if group.vibration_matrix %}
-          <p class="section-note" style="margin-top:14px">Record vibration readings (mm/sec) and conformance to engg spec.</p>
-          <div class="word-matrix vibration-table">
-            <div class="word-matrix-head" style="grid-template-columns: 1.2fr repeat({{ group.vibration_matrix.columns|length }}, minmax(110px, 1fr));">
-              <span>Position</span>
-              {% for col in group.vibration_matrix.columns %}<span>{{ col }}</span>{% endfor %}
-            </div>
-            {% for row in group.vibration_matrix.rows %}
-              <div class="word-matrix-row" style="grid-template-columns: 1.2fr repeat({{ group.vibration_matrix.columns|length }}, minmax(110px, 1fr));">
-                <p>{{ row.name }}</p>
-                {% for field in row.cells %}
-                  <div>{% if field %}{% include "jobcards/input.html" with field=field %}{% else %}<span class="muted">—</span>{% endif %}</div>
-                {% endfor %}
-              </div>
-            {% endfor %}
-          </div>
-          {% if group.fields_after_vibration %}
-            <div class="check-list" style="margin-top:12px">
-              {% for field in group.fields_after_vibration %}
-                <div class="check-row {% if field.field_type != 'yes_no' %}check-extra{% endif %}">
-                  <p>{{ field.label }}</p>
-                  {% include "jobcards/input.html" with field=field %}
-                </div>
-              {% endfor %}
-            </div>
-          {% endif %}
-        {% endif %}
       {% endif %}
     </section>
   {% endfor %}

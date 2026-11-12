@@ -54,10 +54,12 @@
     {% endif %}
     {% if open_rework %}{% include "includes/rework_panel.html" %}{% endif %}
     {% for group in groups %}
-      <section class="sheet-section tone-section {% if group.name == 'Fill as per pressure rating' %}tone-pressure{% elif group.name == 'Major parts details' or group.name == 'Assembly parts' or group.name == 'Ultra Coolant Oil' %}tone-parts{% elif group.name == 'Vibration readings' %}tone-vibration{% elif group.name == 'Belt tension reference' %}tone-belt{% elif group.name == 'Final audit' or group.name == 'Spot audit' %}tone-audit{% endif %}" style="margin-bottom:16px">
-      <h3 class="section-title">{{ group.name }}</h3>
-      {% if group.general_check_table %}
-        <div class="word-matrix general-check-table">
+      <section class="sheet-section tone-section {% if group.post_testing_triad %}tone-post-test{% elif group.name == 'Fill as per pressure rating' %}tone-pressure{% elif group.name == 'Major parts details' or group.name == 'Assembly parts' or group.name == 'Ultra Coolant Oil' %}tone-parts{% elif group.name == 'Vibration readings' or group.name == 'Vibration data' %}tone-vibration{% elif group.name == 'Oil fill' %}tone-oil{% elif group.name == 'General check' %}tone-general{% elif group.name == 'Belt tension reference' %}tone-belt{% elif group.name == 'Final audit' or group.name == 'Spot audit' %}tone-audit{% endif %}" style="margin-bottom:16px">
+      {% if not group.post_testing_triad %}<h3 class="section-title">{{ group.name }}</h3>{% endif %}
+      {% if group.post_testing_triad %}
+        {% include "jobcards/_post_testing_triad.html" %}
+      {% elif group.general_check_table %}
+        <div class="word-matrix general-check-table excel-grid">
           <div class="word-matrix-head" style="grid-template-columns: 1.6fr 1fr;"><span>GENERAL CHECK</span><span>Y/N</span></div>
           {% for field in group.fields %}
             <div class="word-matrix-row" style="grid-template-columns: 1.6fr 1fr;">
@@ -72,7 +74,7 @@
           {% endfor %}
         </div>
       {% elif group.oil_matrix %}
-        <div class="word-matrix oil-fill-table">
+        <div class="word-matrix oil-fill-table excel-grid">
           <div class="word-matrix-head" style="grid-template-columns: 1.2fr 1fr;"><span>OIL FILL</span><span>LTR</span></div>
           {% for row in group.oil_matrix.rows %}
             <div class="word-matrix-row" style="grid-template-columns: 1.2fr 1fr;">
@@ -128,21 +130,7 @@
           {% endwith %}
         {% endif %}
       {% elif group.vibration_matrix %}
-        <p class="section-note">Record vibration readings (mm/sec) and conformance to engg spec.</p>
-        <div class="word-matrix vibration-table">
-          <div class="word-matrix-head" style="grid-template-columns: 1.2fr repeat({{ group.vibration_matrix.columns|length }}, minmax(110px, 1fr));">
-            <span>Position</span>
-            {% for col in group.vibration_matrix.columns %}<span>{{ col }}</span>{% endfor %}
-          </div>
-          {% for row in group.vibration_matrix.rows %}
-            <div class="word-matrix-row" style="grid-template-columns: 1.2fr repeat({{ group.vibration_matrix.columns|length }}, minmax(110px, 1fr));">
-              <p>{{ row.name }}</p>
-              {% for field in row.cells %}
-                <div>{% if field %}{% with current=values|getitem:field.field_key %}<input class="field-input" name="f_{{ field.field_key }}" value="{{ current }}" {% if not editable %}disabled{% endif %}>{% endwith %}{% else %}<span class="muted">—</span>{% endif %}</div>
-              {% endfor %}
-            </div>
-          {% endfor %}
-        </div>
+        {% include "jobcards/_vibration_table.html" %}
       {% elif group.belt_notes %}
         {% for note in group.belt_notes %}
           <div class="belt-chart">{% if note.help_text %}{% if note.help_text|slice:":11" == "belt_chart|" %}{{ note.help_text|slice:"11:" }}{% else %}{{ note.help_text }}{% endif %}{% else %}{{ note.label }}{% endif %}</div>

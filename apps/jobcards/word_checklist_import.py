@@ -13,6 +13,9 @@ from jobcards.checklist_import import (
     _field_key,
     _short,
     _yes_no,
+    repair_general_check_tables,
+    repair_runout_value_fields,
+    runout_decimal_fields,
     upsert_phase_template,
 )
 from jobcards.models import JobCardField, JobCardTemplate
@@ -37,7 +40,7 @@ PROBLEM_LOG = re.compile(r"problem\s+description", re.I)
 VIBRATION = re.compile(r"vibration\s+reading|mm\s*/\s*sec|conformance\s+to\s+engg", re.I)
 KW_AMP = re.compile(r"^\s*kw\s*$|^\s*amp\s*$", re.I)
 BAR_COL = re.compile(r"(\d+(?:\.\d+)?)\s*bar", re.I)
-VALUE_BLANK = re.compile(r"_{3,}|\bvalues?\b|લખો|લખવું|reading|hz\b|ltr|liter", re.I)
+VALUE_BLANK = re.compile(r"_{3,}|\bvalues?\b|લખો|લખવું|લખવી|લખવાનું|reading|hz\b|ltr|liter", re.I)
 FILL_LINE = re.compile(r"_{3,}|:{0,1}\s*$")
 
 
@@ -343,43 +346,52 @@ def _parse_kw_amp_table(table, assembly_fields, used):
         )
 
 
-def _parse_vibration_table(table, testing_fields, used, section="Vibration readings"):
+def _parse_vibration_table(table, testing_fields, used, section="Vibration data"):
+    """Parse LOAD/UNLOAD vibration grids (2-col or Excel-style 1/2 under each)."""
     headers = _unique_cells(table.rows[0]) if table.rows else []
     header_l = [cell.casefold() for cell in headers]
-    col_roles = []
-    for cell in header_l:
-        if "position" in cell:
-            col_roles.append("name")
-        elif "unload" in cell:
-            col_roles.append("Unload (mm/sec)")
-        elif "load" in cell:
-            col_roles.append("Load (mm/sec)")
-        else:
-            col_roles.append(cell.strip() or "Value")
-    if "name" not in col_roles:
-        col_roles = ["name", "Load (mm/sec)", "Unload (mm/sec)"]
-    value_cols = [col for col in col_roles if col != "name"]
-    start = 1
-    if table.rows and "position" not in header_l[0]:
-        start = 0
+    sub = _unique_cells(table.rows[1]) if len(table.rows) > 1 else []
+    # Excel-style: VAIBRATION DATA | LOAD | UNLOAD with sub-row 1 | 2 | 1 | 2
+    if any("load" in cell for cell in header_l) and any(cell.strip() in {"1", "2"} for cell in sub):
+        value_cols = ["LOAD 1", "LOAD 2", "UNLOAD 1", "UNLOAD 2"]
+        start = 2 if any(cell.strip() in {"1", "2"} for cell in sub) else 1
+    else:
+        col_roles = []
+        for cell in header_l:
+            if "position" in cell or "vibration" in cell or "vaibration" in cell:
+                col_roles.append("name")
+            elif "unload" in cell:
+                col_roles.append("UNLOAD 1" if "UNLOAD 1" not in col_roles else "UNLOAD 2")
+            elif "load" in cell:
+                col_roles.append("LOAD 1" if "LOAD 1" not in col_roles else "LOAD 2")
+            else:
+                col_roles.append(cell.strip() or "Value")
+        if "name" not in col_roles:
+            col_roles = ["name", "LOAD 1", "LOAD 2", "UNLOAD 1", "UNLOAD 2"]
+        value_cols = [col for col in col_roles if col != "name"]
+        start = 1
+        if table.rows and header_l and "position" not in header_l[0] and "vibration" not in header_l[0]:
+            start = 0
     for row in table.rows[start:]:
         cells = _unique_cells(row)
         if not cells:
             continue
         name = cells[0].strip()
-        if not name or name.casefold() in {"position", "load", "unload"}:
+        if not name or name.casefold() in {"position", "load", "unload", "1", "2"}:
             continue
         if VIBRATION.search(name):
             continue
-        for index, col in enumerate(value_cols, start=1):
+        axis = name.upper() if re.fullmatch(r"axial|vertical|horizontal", name, re.I) else name
+        for col in value_cols:
             testing_fields.append(
                 _field_tuple(
-                    _field_key("vib", f"{name}_{col}", used),
+                    _field_key("vib", f"{axis}_{col}", used),
                     section,
-                    f"{name} — {col}",
+                    f"{axis} — {col}",
+                    field_type="decimal",
                     required=False,
-                    unit="mm/sec",
-                    extra=f"vib|{name}|{col}",
+                    unit="mm/s",
+                    extra=f"vib|{axis}|{col}",
                 )
             )
 
@@ -557,6 +569,14 @@ def _as_yes_no_or_text(prefix: str, number: str, section: str, label: str, used:
     return _yes_no(prefix, number, section, label, used)
 
 
+def _checklist_item_fields(prefix: str, number: str, section: str, label: str, used: set):
+    """One checklist line → one or more fields (run-out values expand to Axial/Radial/Angular)."""
+    runout = runout_decimal_fields(prefix, number, section, label, used)
+    if runout:
+        return runout
+    return [_as_yes_no_or_text(prefix, number, section, label, used)]
+
+
 def parse_word_document(docx_path: Path, checklist_key: str):
     """Return Assembly/Testing field lists from one Word job card (.docx)."""
     from docx import Document
@@ -664,8 +684,8 @@ def parse_word_document(docx_path: Path, checklist_key: str):
                 if VIBRATION.search(label) and any((f[6] or "").startswith("vib|") for f in testing_fields):
                     continue
                 test_number += 1
-                testing_fields.append(
-                    _as_yes_no_or_text(prefix, str(test_number), test_section, label, used)
+                testing_fields.extend(
+                    _checklist_item_fields(prefix, str(test_number), test_section, label, used)
                 )
             testing_fields.extend(pending_vib)
             continue
@@ -723,8 +743,8 @@ def parse_word_document(docx_path: Path, checklist_key: str):
                     if len(label) > 24:
                         continue
                 asm_number += 1
-                assembly_fields.append(
-                    _as_yes_no_or_text("asm", str(asm_number), section_title, label, used)
+                assembly_fields.extend(
+                    _checklist_item_fields("asm", str(asm_number), section_title, label, used)
                 )
             continue
 
@@ -880,6 +900,7 @@ def import_word_job_cards(folder: Path | None = None, keys: list[str] | None = N
                         }
                     )
 
+    repaired = repair_runout_value_fields() + repair_general_check_tables()
     return {
         "created": created,
         "updated": updated,
@@ -887,4 +908,5 @@ def import_word_job_cards(folder: Path | None = None, keys: list[str] | None = N
         "missing": missing,
         "keys": len(keys),
         "details": details,
+        "runout_repaired": repaired,
     }

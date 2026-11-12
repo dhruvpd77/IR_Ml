@@ -15,6 +15,7 @@ from machines.brand import brand_static
 from accounts.permissions import can_operate_phase, can_view_machine
 from audit.utils import log_audit
 from core.constants import TEST_AREAS, PhaseCode, PhaseStatus
+from jobcards.checklist_import import repair_general_check_tables, repair_runout_value_fields
 from jobcards.forms import FieldForm, TemplateForm
 from jobcards.importers import parse_template_workbook
 from jobcards.models import JobCardField, JobCardSubmission, JobCardTemplate, MachineAttachment
@@ -238,6 +239,9 @@ def fill(request, phase_code, machine_id):
         .prefetch_related("responses__field", "attachments")
         .order_by("phase_code", "cycle", "revision")
     )
+    repaired = repair_runout_value_fields(template=template) + repair_general_check_tables(template=template)
+    if repaired:
+        template = JobCardTemplate.objects.get(pk=template.pk)
     groups = group_fields(template.active_fields())
     for group in groups:
         fields = group["fields"]
