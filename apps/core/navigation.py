@@ -1,6 +1,7 @@
+from django.db.models import Count
 from django.urls import reverse
 
-from core.constants import PHASE_ROLE, PhaseCode, Roles
+from core.constants import PHASE_ROLE, PhaseCode, PhaseStatus, Roles
 
 
 BOARD_URLS = {"core:monthly", "core:daily", "core:analytics", "core:slideshow"}
@@ -35,14 +36,21 @@ NAV_ITEMS = [
     {"label": "Register Machine", "url": "machines:create", "icon": "plus-circle", "roles": {Roles.PLANNING_DATA_ENTRY}},
     {"label": "Planning Excel", "url": "machines:import", "icon": "file-spreadsheet", "management": True, "highlight": ["import", "import_preview"]},
     {"label": "Model Catalog", "url": "machines:catalog", "icon": "file-spreadsheet", "roles": {Roles.PRODUCTION_LEADER}, "highlight": ["catalog"]},
-    {"label": "Serial numbers", "url": "workflow:planner", "icon": "hash", "roles": {Roles.PRODUCTION_LEADER}, "highlight": ["planner", "production", "production_machine"]},
-    {"label": "Assembly", "url": "workflow:phase", "args": ["ASSEMBLY"], "icon": "wrench", "roles": {Roles.ASSEMBLY}},
-    {"label": "Electrical", "url": "workflow:phase", "args": ["ELECTRICAL"], "icon": "zap", "roles": {Roles.ELECTRICAL}},
-    {"label": "Waiting Area", "url": "workflow:phase", "args": ["WAITING"], "icon": "hourglass", "roles": {Roles.TESTING}},
-    {"label": "Testing", "url": "workflow:phase", "args": ["TESTING"], "icon": "gauge", "roles": {Roles.TESTING}},
-    {"label": "End of Line", "url": "workflow:phase", "args": ["EOL"], "icon": "package-check", "roles": {Roles.EOL}},
-    {"label": "Quality Control", "url": "workflow:phase", "args": ["QC"], "icon": "shield-check", "roles": {Roles.QC}},
-    {"label": "Rework", "url": "rework:list", "icon": "rotate-ccw", "highlight": ["list", "detail"]},
+    {
+        "label": "Serial numbers",
+        "url": "workflow:planner",
+        "icon": "hash",
+        "roles": {Roles.PRODUCTION_LEADER},
+        "highlight": ["planner", "production", "production_machine"],
+        "count": "planner",
+    },
+    {"label": "Assembly", "url": "workflow:phase", "args": ["ASSEMBLY"], "icon": "wrench", "roles": {Roles.ASSEMBLY}, "count": "ASSEMBLY"},
+    {"label": "Electrical", "url": "workflow:phase", "args": ["ELECTRICAL"], "icon": "zap", "roles": {Roles.ELECTRICAL}, "count": "ELECTRICAL"},
+    {"label": "Waiting Area", "url": "workflow:phase", "args": ["WAITING"], "icon": "hourglass", "roles": {Roles.TESTING}, "count": "WAITING"},
+    {"label": "Testing", "url": "workflow:phase", "args": ["TESTING"], "icon": "gauge", "roles": {Roles.TESTING}, "count": "TESTING"},
+    {"label": "End of Line", "url": "workflow:phase", "args": ["EOL"], "icon": "package-check", "roles": {Roles.EOL}, "count": "EOL"},
+    {"label": "Quality Control", "url": "workflow:phase", "args": ["QC"], "icon": "shield-check", "roles": {Roles.QC}, "count": "QC"},
+    {"label": "Rework", "url": "rework:list", "icon": "rotate-ccw", "highlight": ["list", "detail", "resolve"], "count": "rework"},
     {"label": "Reports", "url": "reports:index", "icon": "bar-chart-3", "roles": {Roles.PRODUCTION_LEADER, Roles.QC}},
     {"label": "Job Card Setup", "url": "jobcards:templates", "icon": "clipboard-list", "management": True, "highlight": ["templates", "template_edit", "template_create"]},
     {"label": "Users", "url": "accounts:users", "icon": "users", "management": True, "highlight": ["users", "user_create", "user_edit"]},
@@ -53,7 +61,58 @@ NAV_ITEMS = [
 ]
 
 
+def queue_counts_for(user):
+    """Open queue sizes for sidebar badges (phase work + open rework)."""
+    from machines.services import visible_machines
+    from rework.models import ReworkRequest
+    from workflow.models import MachinePhaseState
+
+    counts = {}
+    machines = visible_machines(user)
+    phase_codes = [
+        PhaseCode.ASSEMBLY,
+        PhaseCode.ELECTRICAL,
+        PhaseCode.WAITING,
+        PhaseCode.TESTING,
+        PhaseCode.EOL,
+        PhaseCode.QC,
+        PhaseCode.PLANNER,
+        PhaseCode.PRODUCTION,
+    ]
+    rows = (
+        MachinePhaseState.objects.filter(
+            machine__in=machines,
+            status=PhaseStatus.IN_PROGRESS,
+            phase__code__in=phase_codes,
+        )
+        .values("phase__code")
+        .annotate(total=Count("id"))
+    )
+    for row in rows:
+        counts[row["phase__code"]] = row["total"]
+
+    planner_open = counts.get(PhaseCode.PLANNER, 0) + counts.get(PhaseCode.PRODUCTION, 0)
+    counts["planner"] = planner_open
+
+    rework_qs = ReworkRequest.objects.filter(status=ReworkRequest.Status.OPEN, machine__in=machines)
+    if not user.is_management and user.role != Roles.QC:
+        if getattr(user, "department_id", None):
+            rework_qs = rework_qs.filter(assigned_phase__department_id=user.department_id)
+        elif user.role == Roles.TESTING:
+            rework_qs = rework_qs.filter(assigned_phase__code__in=[PhaseCode.WAITING, PhaseCode.TESTING])
+        elif user.role == Roles.PRODUCTION_LEADER:
+            rework_qs = rework_qs.filter(
+                assigned_phase__code__in=[PhaseCode.PLANNER, PhaseCode.PRODUCTION]
+            )
+        else:
+            role_phases = [code for code, role in PHASE_ROLE.items() if role == user.role]
+            rework_qs = rework_qs.filter(assigned_phase__code__in=role_phases) if role_phases else rework_qs.none()
+    counts["rework"] = rework_qs.count()
+    return counts
+
+
 def navigation_for(user, match):
+    counts = queue_counts_for(user) if getattr(user, "is_authenticated", False) else {}
     items = []
     for item in NAV_ITEMS:
         if not _visible(user, item):
@@ -72,7 +131,17 @@ def navigation_for(user, match):
                 active = match.namespace == "machines" and match.url_name in highlights
             else:
                 active = match.namespace == item["url"].split(":")[0] and same_name
-        items.append({"label": item["label"], "href": href, "icon": item["icon"], "active": active})
+        count_key = item.get("count")
+        count = counts.get(count_key, 0) if count_key else 0
+        items.append(
+            {
+                "label": item["label"],
+                "href": href,
+                "icon": item["icon"],
+                "active": active,
+                "count": count,
+            }
+        )
     return items
 
 

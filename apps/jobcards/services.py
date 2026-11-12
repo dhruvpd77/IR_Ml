@@ -760,6 +760,16 @@ def submission_form_state(submission):
             values[key] = response.value_json or []
         elif ftype == FieldType.CHECKBOX:
             values[key] = bool(response.value_bool)
+        elif ftype == FieldType.YES_NO:
+            text = (response.value_text or "").strip()
+            if text in {"Yes", "No"}:
+                values[key] = text
+            elif response.value_bool is True:
+                values[key] = "Yes"
+            elif response.value_bool is False:
+                values[key] = "No"
+            else:
+                values[key] = text
         elif response.value_decimal is not None:
             values[key] = format(response.value_decimal.normalize(), "f")
         elif response.value_date:
@@ -773,6 +783,35 @@ def submission_form_state(submission):
             continue
         files[key] = clips if ftype in {FieldType.VIDEO, FieldType.IMAGE} else clips[0]
     return values, files
+
+
+def answers_for_template(submission, target_template):
+    """Map a saved submission onto another template version (match by field_key, then label)."""
+    if submission is None:
+        return {}, {}
+    values, files = submission_form_state(submission)
+    if not target_template or submission.template_id == getattr(target_template, "pk", None):
+        return values, files
+    by_label = {}
+    for response in submission.responses.select_related("field"):
+        label = (response.field.label or "").strip().casefold()
+        if label:
+            by_label[label] = response.field.field_key
+    mapped = {}
+    mapped_files = {}
+    for field in target_template.active_fields():
+        key = field.field_key
+        if key in values:
+            mapped[key] = values[key]
+            if key in files:
+                mapped_files[key] = files[key]
+            continue
+        prior_key = by_label.get((field.label or "").strip().casefold())
+        if prior_key and prior_key in values:
+            mapped[key] = values[prior_key]
+            if prior_key in files:
+                mapped_files[key] = files[prior_key]
+    return mapped, mapped_files
 
 
 def latest_phase_submission(machine, phase_code, *, before_cycle=None):
@@ -790,6 +829,7 @@ def ensure_phase_draft(machine, user, phase_code, cycle):
     """
     Return the working draft for this phase/cycle.
     On a new rework cycle, copy the previous answers/files so operators only change what needs fixing.
+    Prefers the current active template and remaps answers by field key / label.
     """
     draft = (
         JobCardSubmission.objects.filter(
@@ -802,16 +842,33 @@ def ensure_phase_draft(machine, user, phase_code, cycle):
         .first()
     )
     if draft is not None:
-        return draft, False
+        # Empty draft left from an older mismatch — rebuild from the prior card.
+        if not draft.responses.exists():
+            draft.delete()
+        else:
+            return draft, False
 
     prior = latest_phase_submission(machine, phase_code, before_cycle=cycle)
     if prior is None:
         return None, False
 
+    try:
+        target_template = active_template(phase_code, machine)
+    except JobCardError:
+        target_template = prior.template
+
+    prior_by_key = {}
+    prior_by_label = {}
+    for response in prior.responses.select_related("field").prefetch_related("attachments"):
+        prior_by_key[response.field.field_key] = response
+        label = (response.field.label or "").strip().casefold()
+        if label:
+            prior_by_label[label] = response
+
     with transaction.atomic():
         draft = JobCardSubmission.objects.create(
             machine=machine,
-            template=prior.template,
+            template=target_template,
             phase_code=phase_code,
             cycle=cycle,
             revision=1,
@@ -820,18 +877,21 @@ def ensure_phase_draft(machine, user, phase_code, cycle):
             remarks=prior.remarks or "",
             corrective_action="",
         )
-        for response in prior.responses.select_related("field").prefetch_related("attachments"):
+        for field in target_template.active_fields():
+            source = prior_by_key.get(field.field_key) or prior_by_label.get((field.label or "").strip().casefold())
+            if source is None:
+                continue
             cloned = JobCardResponse.objects.create(
                 submission=draft,
-                field=response.field,
-                value_text=response.value_text,
-                value_bool=response.value_bool,
-                value_decimal=response.value_decimal,
-                value_date=response.value_date,
-                value_time=response.value_time,
-                value_json=response.value_json,
+                field=field,
+                value_text=source.value_text,
+                value_bool=source.value_bool,
+                value_decimal=source.value_decimal,
+                value_date=source.value_date,
+                value_time=source.value_time,
+                value_json=source.value_json,
             )
-            for attachment in response.attachments.order_by("pk"):
+            for attachment in source.attachments.order_by("pk"):
                 MachineAttachment.objects.create(
                     machine=machine,
                     submission=draft,
@@ -846,7 +906,7 @@ def ensure_phase_draft(machine, user, phase_code, cycle):
             user,
             "jobcard.prefill",
             instance=draft,
-            changes={"from_cycle": prior.cycle, "from_submission": prior.pk},
+            changes={"from_cycle": prior.cycle, "from_submission": prior.pk, "template": target_template.pk},
         )
     return draft, True
 

@@ -21,6 +21,7 @@ from jobcards.models import JobCardField, JobCardSubmission, JobCardTemplate, Ma
 from jobcards.services import (
     JobCardError,
     active_template,
+    answers_for_template,
     answers_from_request,
     attach_qc_photo,
     attach_testing_video,
@@ -104,7 +105,14 @@ def fill(request, phase_code, machine_id):
                 .order_by("-pk")
                 .first()
             )
-    values, existing_files = submission_form_state(record)
+    # Keep filled rework/prior answers visible even if the template version changed.
+    if record is not None and not qc_edit:
+        values, existing_files = answers_for_template(record, template)
+        if record.responses.exists() and not values and record.template_id:
+            template = record.template
+            values, existing_files = submission_form_state(record)
+    else:
+        values, existing_files = submission_form_state(record)
     field_errors = {}
     chosen_area = machine.test_area
     rework_raise_open = False
