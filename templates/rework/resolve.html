@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% load mqms %}
+{% block title %}Resolve · {{ item.rework_code }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="crumbs"><a href="{% url 'rework:list' %}">Rework</a> / Resolve</p>
+    <p class="eyebrow">Resolve rework</p>
+    <h1>{{ item.rework_code }}</h1>
+    <p class="muted">
+      {% if has_job_card %}
+        Fill the full {{ item.assigned_phase.name }} job card first (View). Then enter the resolve comment here to move to the next phase.
+      {% else %}
+        Complete the current {{ item.assigned_phase.name }} step, then enter the resolve comment.
+      {% endif %}
+    </p>
+  </div>
+  <div class="btn-row">
+    {% if has_job_card %}
+      <a class="btn-ghost" href="{% url 'jobcards:fill' item.assigned_phase.code item.machine.machine_id %}">View job card</a>
+    {% endif %}
+    <a class="btn-ghost" href="{% url 'rework:detail' item.pk %}">Reason</a>
+  </div>
+</div>
+
+<section class="card stack">
+  <section class="rework-banner">
+    <p class="rework-eyebrow">Problem</p>
+    <p class="comment-body">{{ item.reason }}</p>
+  </section>
+
+  <dl class="meta-list">
+    <div><dt>Machine</dt><dd>{{ item.machine.machine_id }}</dd></div>
+    <div><dt>Model</dt><dd>{{ item.machine.planning.model_description|default:"—" }}</dd></div>
+    <div><dt>Work order</dt><dd>{{ item.machine.planning.work_order|default:"—" }}</dd></div>
+    <div><dt>Current phase</dt><dd>{{ item.assigned_phase.name }}</dd></div>
+    <div><dt>Job card</dt><dd>{% if has_job_card %}{% if card_open %}Open — fill all fields{% else %}Not open{% endif %}{% else %}Not required on this step{% endif %}</dd></div>
+  </dl>
+
+  <form method="post" class="stack" data-confirm="Resolve this rework and move the machine to the next phase?">
+    {% csrf_token %}
+    <label class="field">
+      <span class="field-label">Resolve comment *</span>
+      <textarea class="field-input rework-comment-input" name="resolution" rows="5" required placeholder="WRITE WHAT WAS FIXED. THIS IS SAVED ON THE REWORK RECORD."></textarea>
+    </label>
+    <div class="btn-row">
+      <button class="btn-primary" type="submit">Resolve and go next</button>
+      <a class="btn-ghost" href="{% url 'rework:list' %}">Cancel</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

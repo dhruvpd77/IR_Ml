@@ -1,22 +1,48 @@
 {% extends "base.html" %}
 {% load mqms %}
-{% block title %}{{ item.rework_code }}{% endblock %}
+{% block title %}Reason · {{ item.rework_code }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><p class="eyebrow">Rework</p><h1>{{ item.rework_code }}</h1></div><a class="btn-ghost" href="{% url 'machines:detail' item.machine.machine_id %}">Open machine</a></div>
-<section class="card">
+<div class="page-head">
+  <div>
+    <p class="crumbs"><a href="{% url 'rework:list' %}">Rework</a> / Reason</p>
+    <p class="eyebrow">Rework reason</p>
+    <h1>{{ item.rework_code }}</h1>
+    <p class="muted">Machine basics and every problem / resolve comment for this rework.</p>
+  </div>
+  <div class="btn-row">
+    {% if has_job_card %}
+      <a class="btn-ghost" href="{% url 'jobcards:fill' item.assigned_phase.code item.machine.machine_id %}">View job card</a>
+    {% else %}
+      <a class="btn-ghost" href="{% url 'machines:detail' item.machine.machine_id %}">Open machine</a>
+    {% endif %}
+    {% if can_resolve %}
+      <a class="btn-primary" href="{% url 'rework:resolve' item.pk %}">Resolve</a>
+    {% endif %}
+  </div>
+</div>
+
+<section class="card stack">
   <p><span class="{{ item.status|badge_class }}">{{ item.get_status_display }}</span></p>
   <dl class="meta-list">
     <div><dt>Machine</dt><dd>{{ item.machine.machine_id }}</dd></div>
+    <div><dt>Model</dt><dd>{{ item.machine.planning.model_description|default:"—" }}</dd></div>
+    <div><dt>Work order</dt><dd>{{ item.machine.planning.work_order|default:"—" }}</dd></div>
+    <div><dt>CCN</dt><dd>{{ item.machine.planning.ccn|default:"—" }}</dd></div>
+    <div><dt>Serial</dt><dd>{{ item.machine.planner_serial|default:"—" }}</dd></div>
+    <div><dt>Brand / Type</dt><dd>{{ item.machine.planning.company|default:"—" }} · {{ item.machine.planning.machine_type|default:"—" }}</dd></div>
     <div><dt>Raised from</dt><dd>{{ item.rejected_phase.name }}</dd></div>
     <div><dt>Current phase</dt><dd>{{ item.assigned_phase.name }}</dd></div>
     <div><dt>Raised by</dt><dd>{{ item.rejected_by.display_name|default:"—" }}</dd></div>
+    <div><dt>When</dt><dd>{{ item.rejected_at|date:"d M Y, H:i" }}</dd></div>
     <div><dt>Path</dt><dd>{{ item.path_codes|default:"—" }}</dd></div>
   </dl>
-  <section class="rework-banner">
-    <p class="rework-eyebrow">Problem</p>
+
+  <section class="rework-banner rework-active-card">
+    <p class="rework-eyebrow">Problem / reason</p>
     <p class="comment-body">{{ item.reason }}</p>
   </section>
-  <h3>Phase comments</h3>
+
+  <h3>Comments</h3>
   {% for note in item.notes.all %}
     <article class="rework-note-card">
       <p class="comment-meta">{{ note.get_note_type_display }} · {{ note.phase_code }} · {{ note.author.display_name|default:"Operator" }} · {{ note.created_at|date:"d M Y, H:i" }}</p>
