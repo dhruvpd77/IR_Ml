@@ -130,7 +130,7 @@
           {% endwith %}
         {% endif %}
       {% elif group.vibration_matrix %}
-        {% include "jobcards/_vibration_table.html" %}
+        {% include "jobcards/_vibration_table.html" with matrix=group.vibration_matrix %}
       {% elif group.belt_notes %}
         {% for note in group.belt_notes %}
           <div class="belt-chart">{% if note.help_text %}{% if note.help_text|slice:":11" == "belt_chart|" %}{{ note.help_text|slice:"11:" }}{% else %}{{ note.help_text }}{% endif %}{% else %}{{ note.label }}{% endif %}</div>

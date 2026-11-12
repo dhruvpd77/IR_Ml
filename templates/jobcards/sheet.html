@@ -120,7 +120,7 @@
             {% endfor %}
           </div>
         {% endif %}
-        {% include "jobcards/_vibration_table.html" %}
+        {% include "jobcards/_vibration_table.html" with matrix=group.vibration_matrix %}
         {% if group.fields_after_vibration %}
           <div class="check-list" style="margin-top:12px">
             {% for field in group.fields_after_vibration %}

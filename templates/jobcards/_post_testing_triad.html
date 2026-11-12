@@ -8,7 +8,8 @@
         {% for field in group.general.fields %}
           <div class="word-matrix-row" style="grid-template-columns: 1.5fr .7fr;">
             <p>{{ field.label }}</p>
-            <div>{% include "jobcards/input.html" with field=field %}</div>
+            <div>{% include "jobcards/input.html" with field=field %}
+            </div>
           </div>
         {% endfor %}
       </div>
@@ -17,7 +18,9 @@
 
   {% if group.vibration %}
     <div class="post-test-card tone-vibration">
-      {% include "jobcards/_vibration_table.html" with matrix=group.vibration.vibration_matrix %}
+      {% with vib=group.vibration %}
+        {% include "jobcards/_vibration_table.html" with matrix=vib.vibration_matrix %}
+      {% endwith %}
     </div>
   {% endif %}
 
@@ -27,12 +30,14 @@
         <div class="word-matrix-head" style="grid-template-columns: 1.1fr 1fr;">
           <span>OIL FILL</span><span>LTR</span>
         </div>
-        {% for row in group.oil.oil_matrix.rows %}
-          <div class="word-matrix-row" style="grid-template-columns: 1.1fr 1fr;">
-            <p>{{ row.name }}</p>
-            <div>{% if row.field %}{% include "jobcards/input.html" with field=row.field %}{% else %}<span class="muted">—</span>{% endif %}</div>
-          </div>
-        {% endfor %}
+        {% with oil=group.oil %}
+          {% for row in oil.oil_matrix.rows %}
+            <div class="word-matrix-row" style="grid-template-columns: 1.1fr 1fr;">
+              <p>{{ row.name }}</p>
+              <div>{% if row.field %}{% include "jobcards/input.html" with field=row.field %}{% else %}<span class="muted">—</span>{% endif %}</div>
+            </div>
+          {% endfor %}
+        {% endwith %}
       </div>
     </div>
   {% endif %}
