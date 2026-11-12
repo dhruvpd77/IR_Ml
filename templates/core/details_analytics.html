@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% load mqms %}
+{% block title %}Details analytics{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Shop intelligence</p>
+    <h1>Details analytics</h1>
+    <p class="muted">Full breakdown of machines, pipeline, brands, stations, rework, and job cards.</p>
+  </div>
+  <div class="btn-row">
+    {% include "includes/fullscreen.html" %}
+    <a class="btn-ghost" href="{% url 'core:analytics' %}">Machine analytics</a>
+    <a class="btn-primary" href="{% url 'machines:list' %}">All machines</a>
+  </div>
+</div>
+
+<form class="dash-filters" method="get">
+  <label>Month
+    <select name="month" onchange="this.form.date.value=''; this.form.submit()">
+      <option value="">All months</option>
+      {% for item in months %}
+        <option value="{{ item.value }}" {% if selected_month == item.value %}selected{% endif %}>{{ item.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Date
+    <input type="date" name="date" value="{{ selected_date }}" onchange="this.form.month.value=''; this.form.submit()">
+  </label>
+  <label>Shift
+    <select name="shift" onchange="this.form.submit()">
+      <option value="">All shifts</option>
+      {% for code, label in shifts %}
+        <option value="{{ code }}" {% if selected_shift == code %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Type
+    <select name="type" onchange="this.form.submit()">
+      <option value="">All types</option>
+      {% for code, label in machine_types %}
+        <option value="{{ code }}" {% if selected_type == code %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Brand
+    <select name="company" onchange="this.form.submit()">
+      <option value="">All brands</option>
+      {% for code, label in companies %}
+        <option value="{{ code }}" {% if selected_company == code %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+</form>
+
+<section class="stat-grid da-kpi">
+  {% for card in kpis %}
+    <article class="stat tone-{{ card.tone }}">
+      <span>{{ card.label }}</span>
+      <strong>{{ card.value }}</strong>
+      <em>{{ card.note }}</em>
+    </article>
+  {% endfor %}
+</section>
+
+<section class="da-grid">
+  <article class="card da-panel">
+    <h3>Pipeline by phase</h3>
+    <p class="muted">Open work vs completed hand-offs in the selected scope.</p>
+    <div class="da-pipeline">
+      {% for row in pipeline %}
+        <div class="da-phase">
+          <div class="da-phase-head">
+            <strong>{{ row.name }}</strong>
+            <span>Open {{ row.open }} · Done {{ row.done }}</span>
+          </div>
+          <div class="da-dual">
+            <i class="da-open" style="width: {{ row.open_pct }}%"></i>
+            <i class="da-done" style="width: {{ row.done_pct }}%"></i>
+          </div>
+        </div>
+      {% empty %}
+        <p class="empty">No phase data.</p>
+      {% endfor %}
+    </div>
+  </article>
+
+  <article class="card da-panel">
+    <h3>14-day trend</h3>
+    <p class="muted">Registered vs QC completed each day.</p>
+    <div class="da-trend">
+      {% for day in trend %}
+        <div class="da-day" title="{{ day.label }} · Reg {{ day.registered }} · Done {{ day.completed }}">
+          <div class="da-day-bars">
+            <i class="da-reg" style="height: {{ day.reg_pct }}%"></i>
+            <i class="da-fin" style="height: {{ day.done_pct }}%"></i>
+          </div>
+          <span>{{ day.label }}</span>
+        </div>
+      {% endfor %}
+    </div>
+    <div class="da-legend">
+      <span><i class="swatch swatch-reg"></i>Registered</span>
+      <span><i class="swatch swatch-fin"></i>Completed</span>
+    </div>
+  </article>
+</section>
+
+<section class="da-grid da-grid-3">
+  <article class="card da-panel">
+    <h3>By brand</h3>
+    {% include "includes/da_bars.html" with rows=brand_rows empty="No brand data." %}
+  </article>
+  <article class="card da-panel">
+    <h3>By machine type</h3>
+    {% include "includes/da_bars.html" with rows=type_rows empty="No type data." %}
+  </article>
+  <article class="card da-panel">
+    <h3>By shift</h3>
+    {% include "includes/da_bars.html" with rows=shift_rows empty="No shift data." %}
+  </article>
+</section>
+
+<section class="da-grid">
+  <article class="card da-panel">
+    <h3>Machine status</h3>
+    {% include "includes/da_bars.html" with rows=status_rows empty="No status data." %}
+  </article>
+  <article class="card da-panel">
+    <h3>Priority mix</h3>
+    {% include "includes/da_bars.html" with rows=priority_rows empty="No priority data." %}
+  </article>
+</section>
+
+<section class="da-grid">
+  <article class="card da-panel">
+    <h3>Busiest stations</h3>
+    {% include "includes/da_bars.html" with rows=station_rows empty="No station assignments." %}
+  </article>
+  <article class="card da-panel">
+    <h3>Top models</h3>
+    {% include "includes/da_bars.html" with rows=top_models empty="No model data." %}
+  </article>
+</section>
+
+<section class="da-grid">
+  <article class="card da-panel">
+    <h3>Job cards submitted</h3>
+    <p class="muted">{{ totals.job_cards }} submitted cards in scope.</p>
+    {% include "includes/da_bars.html" with rows=jobcard_rows empty="No submitted job cards." %}
+  </article>
+  <article class="card da-panel">
+    <h3>Open rework by phase</h3>
+    {% include "includes/da_bars.html" with rows=rework_by_phase empty="No open rework." %}
+    <div class="table-wrap" style="margin-top:14px;border:0">
+      <table class="data-table">
+        <thead><tr><th>Machine</th><th>Phase</th><th>Raised</th></tr></thead>
+        <tbody>
+          {% for item in rework_open_list %}
+            <tr>
+              <td>
+                <a class="machine-link" href="{% url 'machines:detail' item.machine.machine_id %}">{{ item.machine.machine_id }}</a>
+                <br><span class="muted">{{ item.machine.planning.model_description|default:"—" }}</span>
+              </td>
+              <td>{{ item.assigned_phase.name }}</td>
+              <td>{{ item.rejected_at|date:"d M, H:i" }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="3" class="empty">No open rework tickets.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </article>
+</section>
+
+<section class="card da-panel">
+  <h3>Recently completed</h3>
+  <div class="table-wrap" style="border:0">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Machine</th>
+          <th>Brand / Type</th>
+          <th>Model</th>
+          <th>QC approved</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for machine in recent_completed %}
+          <tr>
+            <td><a class="machine-link" href="{% url 'machines:detail' machine.machine_id %}">{{ machine.machine_id }}</a></td>
+            <td>{{ machine.planning.company }} · {{ machine.planning.machine_type }}</td>
+            <td>{{ machine.planning.model_description }}</td>
+            <td>{{ machine.qc_approved_at|date:"d M Y, H:i"|default:"—" }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="4" class="empty">No completed machines in this scope.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

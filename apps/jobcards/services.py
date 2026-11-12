@@ -1027,35 +1027,45 @@ def revise_submission(submission, user, answers, files, reason):
         return revised
 
 
-def _pressure_matrix_from_fields(fields):
-    """Build Belt/Pulley × Bar CCN grid from imported Word pressure fields."""
-    bars = []
+def _matrix_from_fields(fields, prefix, leader_check=None):
+    """Build a labeled row×column grid from help_text like prefix|row|col."""
+    columns = []
     rows = {}
     leader = None
     for field in fields:
         help_text = field.help_text or ""
-        if help_text.startswith("press|leader|") or re.search(r"checked\s+by|team\s+leader", field.label, re.I):
+        if leader_check and leader_check(field, help_text):
             leader = field
             continue
         row_name = None
-        bar_name = None
-        if help_text.startswith("press|"):
+        col_name = None
+        if help_text.startswith(f"{prefix}|"):
             parts = help_text.split("|")
             if len(parts) >= 3:
-                row_name, bar_name = parts[1], parts[2]
-        if not row_name or not bar_name:
-            match = re.match(r"^(.*?)\s*[—\-]\s*(.+?)\s*\(CCN\)\s*$", field.label)
+                row_name, col_name = parts[1], parts[2]
+        if not row_name or not col_name:
+            match = re.match(r"^(.*?)\s*[—\-]\s*(.+?)(?:\s*\(CCN\))?\s*$", field.label)
             if match:
-                row_name, bar_name = match.group(1).strip(), match.group(2).strip()
-        if not row_name or not bar_name:
+                row_name, col_name = match.group(1).strip(), match.group(2).strip()
+        if not row_name or not col_name:
             continue
-        if bar_name not in bars:
-            bars.append(bar_name)
-        rows.setdefault(row_name, {})[bar_name] = field
+        if col_name not in columns:
+            columns.append(col_name)
+        rows.setdefault(row_name, {})[col_name] = field
     if not rows:
         return None
-    matrix_rows = [{"name": name, "cells": [cells.get(bar) for bar in bars]} for name, cells in rows.items()]
-    return {"bars": bars, "rows": matrix_rows, "leader": leader}
+    matrix_rows = [{"name": name, "cells": [cells.get(col) for col in columns]} for name, cells in rows.items()]
+    return {"bars": columns, "columns": columns, "rows": matrix_rows, "leader": leader}
+
+
+def _pressure_matrix_from_fields(fields):
+    """Build Belt/Pulley × Bar CCN grid from imported Word pressure fields."""
+    return _matrix_from_fields(
+        fields,
+        "press",
+        leader_check=lambda field, help_text: help_text.startswith("press|leader|")
+        or bool(re.search(r"checked\s+by|team\s+leader", field.label, re.I)),
+    )
 
 
 def group_fields(fields):
@@ -1073,6 +1083,38 @@ def group_fields(fields):
             matrix = _pressure_matrix_from_fields(group["fields"])
             if matrix:
                 group["pressure_matrix"] = matrix
+        elif name == "Major parts details":
+            matrix = _matrix_from_fields(group["fields"], "parts")
+            if matrix:
+                group["parts_matrix"] = matrix
+        elif name in {"Vibration readings", "Vibration data", "During testing"}:
+            vib_fields = [field for field in group["fields"] if (field.help_text or "").startswith("vib|")]
+            if vib_fields:
+                matrix = _matrix_from_fields(vib_fields, "vib")
+                if matrix:
+                    group["vibration_matrix"] = matrix
+                    before, after, seen_vib = [], [], False
+                    for field in group["fields"]:
+                        if (field.help_text or "").startswith("vib|"):
+                            seen_vib = True
+                            continue
+                        if seen_vib:
+                            after.append(field)
+                        else:
+                            before.append(field)
+                    group["fields"] = before
+                    group["fields_after_vibration"] = after
+        elif name == "Oil fill":
+            matrix = _matrix_from_fields(group["fields"], "oil")
+            if matrix:
+                # Oil fill is a single-column LTR list (1ST/2ND/3RD/TOTAL).
+                group["oil_matrix"] = {
+                    "rows": [{"name": row["name"], "field": next((cell for cell in row["cells"] if cell), None)} for row in matrix["rows"]],
+                    "unit": "LTR",
+                }
+        elif name == "General check":
+            if group["fields"] and all(field.field_type == "yes_no" for field in group["fields"]):
+                group["general_check_table"] = True
         elif name == "Belt tension reference":
             notes = []
             inputs = []

@@ -26,12 +26,13 @@ from core.stats import (
     STAGE_LABELS,
     admin_stats,
     department_cards,
+    details_analytics,
     machines_for_card,
     machines_for_department_card,
     scoped_machines,
 )
 from machines.floor import floor_board, floor_board_payload
-from machines.forms import SHIFT_CHOICES, TYPE_CHOICES
+from machines.forms import COMPANY_CHOICES, SHIFT_CHOICES, TYPE_CHOICES
 from machines.models import MonthlyTentativePlan
 from machines.services import visible_machines
 from workflow.models import ProductionPhase, WorkflowEvent
@@ -196,6 +197,54 @@ def machine_analytics(request):
         }
     )
     return render(request, "core/analytics.html", context)
+
+
+@board_viewer_required
+def details_analytics_view(request):
+    shift = chosen_shift(request)
+    machine_type = chosen_machine_type(request)
+    company = (request.GET.get("company") or "").strip()
+    allowed_companies = {code for code, _label in COMPANY_CHOICES}
+    if company not in allowed_companies:
+        company = ""
+    on_date = None
+    start = end = None
+    month_value = ""
+    day_value = ""
+    raw_date = (request.GET.get("date") or "").strip()
+    if raw_date:
+        try:
+            on_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
+            day_value = on_date.isoformat()
+        except ValueError:
+            on_date = None
+    else:
+        parsed = parse_month(request.GET.get("month"))
+        if parsed:
+            start, end = month_bounds(*parsed)
+            month_value = f"{parsed[0]:04d}-{parsed[1]:02d}"
+    context = details_analytics(
+        machine_type=machine_type,
+        company=company,
+        start=start,
+        end=end,
+        on_date=on_date,
+        shift=shift,
+    )
+    context.update(
+        {
+            "months": month_options(),
+            "shifts": SHIFT_CHOICES,
+            "machine_types": TYPE_CHOICES,
+            "companies": COMPANY_CHOICES,
+            "selected_month": month_value,
+            "selected_date": day_value,
+            "selected_shift": shift,
+            "selected_type": machine_type,
+            "selected_company": company,
+        }
+    )
+    return render(request, "core/details_analytics.html", context)
 
 
 @board_viewer_required
@@ -396,6 +445,7 @@ def dashboard_slideshow(request):
         {"label": "Monthly dashboard", "url": f"{reverse('core:monthly')}?embed=1"},
         {"label": "Daily dashboard", "url": f"{reverse('core:daily')}?embed=1"},
         {"label": "Machine analytics", "url": f"{reverse('core:analytics')}?embed=1"},
+        {"label": "Details analytics", "url": f"{reverse('core:details_analytics')}?embed=1"},
     ]
     return render(
         request,

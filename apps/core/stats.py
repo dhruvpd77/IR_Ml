@@ -320,3 +320,214 @@ def machines_for_department_card(phase_code, key, machine_type=""):
         .select_related("planning", "station")
         .order_by("machine_id")
     )
+
+
+def _bar_rows(rows, label_key, value_key="total", limit=12):
+    items = [
+        {"label": (row.get(label_key) or "—"), "value": row[value_key]}
+        for row in rows
+        if row.get(value_key)
+    ][:limit]
+    peak = max((item["value"] for item in items), default=0) or 1
+    for item in items:
+        item["pct"] = round((item["value"] / peak) * 100)
+    return items
+
+
+def details_analytics(machine_type="", company="", start=None, end=None, on_date=None, shift=""):
+    """Deep shop analytics for the Details Analytics page."""
+    today = timezone.localdate()
+    machines = scoped_machines(machine_type, start=start, end=end, on_date=on_date, shift=shift)
+    if company:
+        machines = machines.filter(planning__company=company)
+    machine_ids = machines.values("pk")
+
+    total = machines.count()
+    completed = machines.filter(status=MachineStatus.COMPLETED).count()
+    open_rework = ReworkRequest.objects.filter(machine__in=machine_ids, status=ReworkRequest.Status.OPEN).count()
+    under_rework = machines.filter(is_under_rework=True).exclude(status=MachineStatus.COMPLETED).count()
+    in_waiting = machines.filter(status=MachineStatus.IN_WAITING).count()
+    in_testing = machines.filter(status=MachineStatus.IN_TESTING).count()
+    in_qc = machines.filter(status=MachineStatus.IN_QC).count()
+    on_floor = machines.filter(
+        status__in=[
+            MachineStatus.IN_PRODUCTION,
+            MachineStatus.IN_WAITING,
+            MachineStatus.IN_TESTING,
+            MachineStatus.IN_EOL,
+            MachineStatus.IN_QC,
+            MachineStatus.UNDER_REWORK,
+        ]
+    ).count()
+
+    finished = list(
+        machines.filter(qc_approved_at__isnull=False).only("pk", "created_at", "qc_approved_at")
+    )
+    if finished:
+        average = sum((item.qc_approved_at - item.created_at).total_seconds() for item in finished) / len(finished)
+    else:
+        average = 0
+
+    open_filter = Q(machine_states__status=PhaseStatus.IN_PROGRESS, machine_states__machine__in=machine_ids)
+    done_filter = Q(machine_states__status=PhaseStatus.COMPLETED, machine_states__machine__in=machine_ids)
+    phase_rows = list(
+        ProductionPhase.objects.filter(is_active=True)
+        .annotate(
+            open_count=Count("machine_states", filter=open_filter),
+            done_count=Count("machine_states", filter=done_filter),
+        )
+        .order_by("sequence", "pk")
+    )
+    phase_peak = max((max(row.open_count, row.done_count) for row in phase_rows), default=0) or 1
+    pipeline = [
+        {
+            "code": row.code,
+            "name": row.name,
+            "open": row.open_count,
+            "done": row.done_count,
+            "open_pct": round((row.open_count / phase_peak) * 100),
+            "done_pct": round((row.done_count / phase_peak) * 100),
+        }
+        for row in phase_rows
+    ]
+
+    status_map = {row["status"]: row["total"] for row in machines.values("status").annotate(total=Count("id"))}
+    status_rows = [
+        {"label": label, "value": status_map.get(code, 0)}
+        for code, label in MachineStatus.CHOICES
+        if status_map.get(code, 0)
+    ]
+    status_peak = max((row["value"] for row in status_rows), default=0) or 1
+    for row in status_rows:
+        row["pct"] = round((row["value"] / status_peak) * 100)
+
+    brand_rows = _bar_rows(
+        machines.values("planning__company").annotate(total=Count("id")).order_by("-total"),
+        "planning__company",
+    )
+    type_rows = _bar_rows(
+        machines.values("planning__machine_type").annotate(total=Count("id")).order_by("-total"),
+        "planning__machine_type",
+    )
+    shift_rows = _bar_rows(
+        machines.values("planning__shift").annotate(total=Count("id")).order_by("-total"),
+        "planning__shift",
+    )
+    priority_map = {row["priority"]: row["total"] for row in machines.values("priority").annotate(total=Count("id"))}
+    priority_rows = [
+        {"label": label, "value": priority_map.get(code, 0), "pct": 0}
+        for code, label in Priority.CHOICES
+    ]
+    priority_peak = max((row["value"] for row in priority_rows), default=0) or 1
+    for row in priority_rows:
+        row["pct"] = round((row["value"] / priority_peak) * 100)
+
+    station_raw = list(
+        machines.exclude(station__isnull=True)
+        .values("station__name", "station__line")
+        .annotate(total=Count("id"))
+        .order_by("-total")[:10]
+    )
+    station_peak = max((row["total"] for row in station_raw), default=0) or 1
+    station_rows = []
+    for row in station_raw:
+        name = row.get("station__name") or "—"
+        line = row.get("station__line") or ""
+        label = f"{name} · {line}" if line else name
+        station_rows.append(
+            {
+                "label": label,
+                "value": row["total"],
+                "pct": round((row["total"] / station_peak) * 100),
+            }
+        )
+
+    reworks = ReworkRequest.objects.filter(machine__in=machine_ids)
+    rework_by_phase = _bar_rows(
+        reworks.filter(status=ReworkRequest.Status.OPEN)
+        .values("assigned_phase__name")
+        .annotate(total=Count("id"))
+        .order_by("-total"),
+        "assigned_phase__name",
+    )
+    rework_open_list = list(
+        reworks.filter(status=ReworkRequest.Status.OPEN)
+        .select_related("machine", "machine__planning", "assigned_phase")
+        .order_by("-rejected_at")[:8]
+    )
+    recent_completed = list(
+        machines.filter(status=MachineStatus.COMPLETED)
+        .select_related("planning")
+        .order_by("-qc_approved_at", "-updated_at")[:8]
+    )
+
+    submissions = JobCardSubmission.objects.filter(
+        machine__in=machine_ids,
+        status=JobCardSubmission.Status.SUBMITTED,
+    )
+    jobcard_rows = _bar_rows(
+        submissions.values("phase_code").annotate(total=Count("id")).order_by("-total"),
+        "phase_code",
+    )
+    for row in jobcard_rows:
+        row["label"] = STAGE_LABELS.get(row["label"], row["label"])
+
+    days = _span_labels(14)
+    trend = [
+        {
+            "label": day.strftime("%d %b"),
+            "registered": machines.filter(created_at__date=day).count(),
+            "completed": machines.filter(qc_approved_at__date=day).count(),
+        }
+        for day in days
+    ]
+    trend_peak = max((max(item["registered"], item["completed"]) for item in trend), default=0) or 1
+    for item in trend:
+        item["reg_pct"] = round((item["registered"] / trend_peak) * 100)
+        item["done_pct"] = round((item["completed"] / trend_peak) * 100)
+
+    top_models = _bar_rows(
+        machines.values("planning__model_description")
+        .annotate(total=Count("id"))
+        .order_by("-total"),
+        "planning__model_description",
+        limit=8,
+    )
+
+    return {
+        "kpis": [
+            {"label": "Total machines", "value": total, "tone": "navy", "note": "In selected scope"},
+            {"label": "On the floor", "value": on_floor, "tone": "amber", "note": "Assembly → QC"},
+            {"label": "Completed", "value": completed, "tone": "green", "note": f"{round((completed / total) * 100) if total else 0}% of scope"},
+            {"label": "Waiting for bay", "value": in_waiting, "tone": "amber", "note": "Ready for Testing"},
+            {"label": "In testing", "value": in_testing, "tone": "blue", "note": "Active test stations"},
+            {"label": "In QC", "value": in_qc, "tone": "red", "note": "Quality review"},
+            {"label": "Open rework", "value": open_rework, "tone": "red", "note": f"{under_rework} machines flagged"},
+            {
+                "label": "Avg cycle time",
+                "value": format_seconds(average) if average else "—",
+                "tone": "navy",
+                "note": "Register → QC approve",
+            },
+        ],
+        "pipeline": pipeline,
+        "status_rows": status_rows,
+        "brand_rows": brand_rows,
+        "type_rows": type_rows,
+        "shift_rows": shift_rows,
+        "priority_rows": priority_rows,
+        "station_rows": station_rows,
+        "rework_by_phase": rework_by_phase,
+        "rework_open_list": rework_open_list,
+        "recent_completed": recent_completed,
+        "jobcard_rows": jobcard_rows,
+        "trend": trend,
+        "top_models": top_models,
+        "totals": {
+            "machines": total,
+            "completed": completed,
+            "open_rework": open_rework,
+            "job_cards": submissions.count(),
+            "today_registered": machines.filter(created_at__date=today).count() if not on_date else total,
+        },
+    }

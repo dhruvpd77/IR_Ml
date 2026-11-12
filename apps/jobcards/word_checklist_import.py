@@ -18,7 +18,7 @@ from jobcards.checklist_import import (
 from jobcards.models import JobCardField, JobCardTemplate
 from machines.catalog import normalize_job_card_key
 
-PARTS_HEADER = re.compile(r"list\s+of\s+major\s+parts|મુખ્ય\s+ભાગ", re.I)
+PARTS_HEADER = re.compile(r"list\s+of\s+major\s+parts|major\s+parts\s+details|મુખ્ય\s+ભાગ", re.I)
 AUDIT_HEADER = re.compile(r"final\s+self|sequential\s+audit", re.I)
 BEFORE_HEADER = re.compile(r"ટેસ્ટિંગ\s+પહેલાં|before\s+testing", re.I)
 DURING_HEADER = re.compile(r"ટેસ્ટિંગ\s+દરમિયાન|during\s+testing", re.I)
@@ -26,13 +26,16 @@ AFTER_HEADER = re.compile(r"ટેસ્ટિંગ\s+પછી|after\s+testing
 SIGN_DATE = re.compile(r"sign\s*/?\s*date|name\s*/?\s*sign", re.I)
 SKIP_TABLE = re.compile(
     r"revision\s+level|brief\s+description\s+of\s+changes|"
-    r"model\s*#|model\s*№|pack(?:age|ge)?\s*ccn|stock\s*dt",
+    r"model\s*#|model\s*№|pack(?:age|ge)?\s*ccn|stock\s*dt|"
+    r"^model\s*\||^work\s+order\s+number",
     re.I,
 )
 PRESSURE_FILL = re.compile(r"pressure\s+rating|fill\s+the\s+below\s+table|pulley\s*ccn|as\s+per\s+pressure", re.I)
 BELT_TENSION = re.compile(r"belt\s+tension|frequency\s+in\s+hz|press?ure\s*\(\s*bar\s*\)", re.I)
 SPOT_AUDIT = re.compile(r"random\s*/?\s*spot\s+audit", re.I)
 PROBLEM_LOG = re.compile(r"problem\s+description", re.I)
+VIBRATION = re.compile(r"vibration\s+reading|mm\s*/\s*sec|conformance\s+to\s+engg", re.I)
+KW_AMP = re.compile(r"^\s*kw\s*$|^\s*amp\s*$", re.I)
 BAR_COL = re.compile(r"(\d+(?:\.\d+)?)\s*bar", re.I)
 VALUE_BLANK = re.compile(r"_{3,}|\bvalues?\b|લખો|લખવું|reading|hz\b|ltr|liter", re.I)
 FILL_LINE = re.compile(r"_{3,}|:{0,1}\s*$")
@@ -189,15 +192,196 @@ def _is_parts_table(table) -> bool:
         return False
     if PARTS_HEADER.search(heading):
         return True
-    # Some English cards use a plain "Description / Part No / Sr. No" header row.
+    # English Nirvana cards: Description / CCN / Make /Brand / Serial No./Batch Code
     probe = " | ".join(_unique_cells(table.rows[0]) + _unique_cells(table.rows[1])).lower()
     if "revision" in probe or "brief description of changes" in probe:
         return False
     has_description = "description" in probe
-    has_part = "part no" in probe or "part no." in probe or "part number" in probe or "part/ccn" in probe
-    has_ccn = "ccn" in probe and "package" not in probe
-    has_sr = "sr" in probe or probe.strip().startswith("#")
-    return has_description and (has_part or (has_ccn and has_sr))
+    has_part = any(token in probe for token in ("part no", "part number", "part/ccn", "part no."))
+    has_ccn = bool(re.search(r"\bccn\b", probe)) and "package" not in probe
+    has_serial = bool(re.search(r"\bsr\.?\b|serial|batch", probe))
+    has_make = "make" in probe or "brand" in probe
+    return has_description and (has_part or has_ccn or has_serial or has_make)
+
+
+def _is_kw_amp_table(table) -> bool:
+    if len(table.rows) != 1:
+        return False
+    cells = [cell.strip().upper() for cell in _unique_cells(table.rows[0])]
+    return "KW" in cells and "AMP" in cells
+
+
+def _is_vibration_table(table) -> bool:
+    probe = " | ".join(_unique_cells(table.rows[0])).lower() if table.rows else ""
+    if "position" in probe and ("load" in probe or "unload" in probe):
+        return True
+    if len(table.rows) > 1:
+        body = " | ".join(_unique_cells(table.rows[1])).lower()
+        if "axial" in body or "vertical" in body or "horizontal" in body:
+            return True
+    return bool(VIBRATION.search(probe))
+
+
+def _iter_nested_tables(table):
+    """Yield nested Word tables inside cells (vibration / coolant grids)."""
+    seen = set()
+    for row in table.rows:
+        for cell in row.cells:
+            for nested in getattr(cell, "tables", []) or []:
+                marker = id(nested._tbl)
+                if marker in seen:
+                    continue
+                seen.add(marker)
+                yield nested
+
+
+def _parse_parts_table(table, assembly_fields, used):
+    """Major parts grid: Description + CCN / Make / Serial columns when present."""
+    section = "Major parts details"
+    header_cells = _unique_cells(table.rows[0])
+    header_l = [cell.casefold() for cell in header_cells]
+    # Simple L03-style list (# / Description / Part No / Sr. No.) → one text per part.
+    simple_list = (
+        any("#" == cell or cell.startswith("sr") for cell in header_l)
+        and not any("make" in cell or "brand" in cell or "batch" in cell for cell in header_l)
+        and not (len(header_cells) >= 3 and any("ccn" == cell or cell.endswith("ccn") for cell in header_l))
+    )
+    # Detect column roles from the header row.
+    columns = []
+    for cell in header_cells:
+        low = cell.casefold().strip()
+        if low in {"#", "no.", "no"} or re.fullmatch(r"#+", low):
+            columns.append(None)
+        elif "description" in low:
+            columns.append("name")
+        elif "ccn" in low or "part no" in low or "part number" in low:
+            columns.append("CCN")
+        elif "make" in low or "brand" in low:
+            columns.append("Make / Brand")
+        elif "serial" in low or "batch" in low or re.match(r"sr\.?\s*no", low):
+            columns.append("Serial No. / Batch Code")
+        else:
+            columns.append(cell.strip() or None)
+
+    if simple_list or ("name" not in columns and len([c for c in columns if c]) <= 1):
+        for row in table.rows:
+            cells = _unique_cells(row)
+            if not cells:
+                continue
+            joined = " | ".join(cells).lower()
+            if PARTS_HEADER.search(joined):
+                continue
+            if cells[0].strip().lower() in {"#", "sr.", "sr. no.", "sr. no", "no.", "description"}:
+                continue
+            if "description" in joined and ("part" in joined or "ccn" in joined):
+                continue
+            description = ""
+            if len(cells) >= 2 and re.match(r"^\d+[a-zA-Z]?$", cells[0].strip()):
+                description = cells[1]
+            elif not re.match(r"^\d+[a-zA-Z]?$", cells[0].strip()):
+                description = cells[0]
+            description = description.strip()
+            if description:
+                assembly_fields.append(_short("part", description, "Assembly parts", used))
+        return
+
+    value_cols = [col for col in columns if col and col != "name"]
+    if not value_cols:
+        value_cols = ["CCN", "Make / Brand", "Serial No. / Batch Code"]
+        columns = ["name"] + value_cols
+
+    for row in table.rows[1:]:
+        raw_cells = []
+        for cell in row.cells:
+            text = (cell.text or "").replace("\r", "\n").replace("\xa0", " ").strip()
+            text = re.sub(r"[ \t]+", " ", text)
+            text = re.sub(r"\n+", " / ", text).strip(" /")
+            if not raw_cells or raw_cells[-1] != text:
+                raw_cells.append(text)
+        if not raw_cells:
+            continue
+        # Align with header width when Word merges empty cells.
+        while len(raw_cells) < len(columns):
+            raw_cells.append("")
+        name = ""
+        values = {}
+        for index, role in enumerate(columns):
+            if role is None or index >= len(raw_cells):
+                continue
+            value = raw_cells[index].strip()
+            if role == "name":
+                name = value
+            else:
+                values[role] = value
+        if not name or name.casefold() in {"description", "ccn"}:
+            continue
+        if PARTS_HEADER.search(name):
+            continue
+        for col in value_cols:
+            assembly_fields.append(
+                _field_tuple(
+                    _field_key("part", f"{name}_{col}", used),
+                    section,
+                    f"{name} — {col}",
+                    required=False,
+                    extra=f"parts|{name}|{col}",
+                )
+            )
+
+
+def _parse_kw_amp_table(table, assembly_fields, used):
+    section = "Ultra Coolant Oil"
+    for label in ("KW", "AMP"):
+        assembly_fields.append(
+            _field_tuple(
+                _field_key("oil", f"ultra_coolant_{label.lower()}", used),
+                section,
+                label,
+                required=False,
+                unit=label,
+            )
+        )
+
+
+def _parse_vibration_table(table, testing_fields, used, section="Vibration readings"):
+    headers = _unique_cells(table.rows[0]) if table.rows else []
+    header_l = [cell.casefold() for cell in headers]
+    col_roles = []
+    for cell in header_l:
+        if "position" in cell:
+            col_roles.append("name")
+        elif "unload" in cell:
+            col_roles.append("Unload (mm/sec)")
+        elif "load" in cell:
+            col_roles.append("Load (mm/sec)")
+        else:
+            col_roles.append(cell.strip() or "Value")
+    if "name" not in col_roles:
+        col_roles = ["name", "Load (mm/sec)", "Unload (mm/sec)"]
+    value_cols = [col for col in col_roles if col != "name"]
+    start = 1
+    if table.rows and "position" not in header_l[0]:
+        start = 0
+    for row in table.rows[start:]:
+        cells = _unique_cells(row)
+        if not cells:
+            continue
+        name = cells[0].strip()
+        if not name or name.casefold() in {"position", "load", "unload"}:
+            continue
+        if VIBRATION.search(name):
+            continue
+        for index, col in enumerate(value_cols, start=1):
+            testing_fields.append(
+                _field_tuple(
+                    _field_key("vib", f"{name}_{col}", used),
+                    section,
+                    f"{name} — {col}",
+                    required=False,
+                    unit="mm/sec",
+                    extra=f"vib|{name}|{col}",
+                )
+            )
 
 
 def _is_skip_table(heading: str) -> bool:
@@ -386,6 +570,7 @@ def parse_word_document(docx_path: Path, checklist_key: str):
     aud_number = 0
     test_number = 0
     pressure_bars = None
+    found_pressure_or_belt = False
 
     for table in document.tables:
         heading = _table_heading(table)
@@ -394,6 +579,14 @@ def parse_word_document(docx_path: Path, checklist_key: str):
         joined_probe = " | ".join(
             cell for row in table.rows[:3] for cell in _unique_cells(row)
         )
+
+        if _is_kw_amp_table(table):
+            _parse_kw_amp_table(table, assembly_fields, used)
+            continue
+
+        if _is_vibration_table(table):
+            _parse_vibration_table(table, testing_fields, used)
+            continue
 
         if _is_skip_table(heading) and not (
             PRESSURE_FILL.search(heading)
@@ -404,36 +597,21 @@ def parse_word_document(docx_path: Path, checklist_key: str):
             or DURING_HEADER.search(heading)
             or AFTER_HEADER.search(heading)
             or PARTS_HEADER.search(heading)
+            or _is_parts_table(table)
         ):
             continue
 
         if _is_parts_table(table):
-            for row in table.rows:
-                cells = _unique_cells(row)
-                if not cells:
-                    continue
-                joined = " | ".join(cells).lower()
-                if PARTS_HEADER.search(joined):
-                    continue
-                if cells[0].strip().lower() in {"#", "sr.", "sr. no.", "sr. no", "no.", "description"}:
-                    continue
-                if "description" in joined and ("part" in joined or "ccn" in joined):
-                    continue
-                description = ""
-                if len(cells) >= 2 and re.match(r"^\d+[a-zA-Z]?$", cells[0].strip()):
-                    description = cells[1]
-                elif not re.match(r"^\d+[a-zA-Z]?$", cells[0].strip()):
-                    description = cells[0]
-                description = description.strip()
-                if description:
-                    assembly_fields.append(_short("part", description, "Assembly parts", used))
+            _parse_parts_table(table, assembly_fields, used)
             continue
 
         if PRESSURE_FILL.search(heading) or PRESSURE_FILL.search(joined_probe):
+            found_pressure_or_belt = True
             _parse_pressure_fill_table(table, assembly_fields, used)
             continue
 
         if BELT_TENSION.search(heading) or BELT_TENSION.search(joined_probe):
+            found_pressure_or_belt = True
             bars = _parse_belt_tension_table(table, assembly_fields, used)
             if bars:
                 pressure_bars = bars
@@ -467,14 +645,29 @@ def parse_word_document(docx_path: Path, checklist_key: str):
             prefix = "aft"
 
         if test_section:
+            pending_vib = []
+            already_vib = any((f[6] or "").startswith("vib|") for f in testing_fields)
+            if not already_vib:
+                for nested in _iter_nested_tables(table):
+                    if _is_vibration_table(nested):
+                        _parse_vibration_table(nested, pending_vib, used, section=test_section)
             for row in table.rows[1:]:
-                label = _checklist_label(_unique_cells(row))
+                cells = _unique_cells(row)
+                label = _checklist_label(cells)
                 if not label:
+                    continue
+                # Place the Word vibration grid where the placeholder row sits.
+                if VIBRATION.search(label) and pending_vib:
+                    testing_fields.extend(pending_vib)
+                    pending_vib = []
+                    continue
+                if VIBRATION.search(label) and any((f[6] or "").startswith("vib|") for f in testing_fields):
                     continue
                 test_number += 1
                 testing_fields.append(
                     _as_yes_no_or_text(prefix, str(test_number), test_section, label, used)
                 )
+            testing_fields.extend(pending_vib)
             continue
 
         # Assembly section tables (Gujarati/English), usually with Sign/Date column.
@@ -535,18 +728,17 @@ def parse_word_document(docx_path: Path, checklist_key: str):
                 )
             continue
 
-    # Shop cards show the pressure CCN matrix after major parts; inject when Word omits it.
-    if not _has_section(assembly_fields, "Fill as per pressure rating"):
+    # Belt-drive Word cards show a pressure CCN matrix; inject only when that chart exists.
+    if found_pressure_or_belt and not _has_section(assembly_fields, "Fill as per pressure rating"):
         insert_at = 0
         seen_parts = False
         for index, field in enumerate(assembly_fields):
-            if field[1] == "Assembly parts":
+            if field[1] in {"Assembly parts", "Major parts details"}:
                 seen_parts = True
                 insert_at = index + 1
             elif seen_parts:
                 break
         injected = []
-        # Prefer bars seen on the Word belt chart; keep 13 Bar for the shop fill table.
         bars = list(pressure_bars or [])
         for bar in ("7 Bar", "10 Bar", "13 Bar"):
             if bar not in bars:

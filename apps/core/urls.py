@@ -12,5 +12,6 @@ urlpatterns = [
     path("dashboard/phase/<slug:key>/", views.department_card, name="department_card"),
     path("dashboard/<slug:key>/", views.dashboard_card, name="dashboard_card"),
     path("analytics/", views.machine_analytics, name="analytics"),
+    path("analytics/details/", views.details_analytics_view, name="details_analytics"),
     path("slideshow/", views.dashboard_slideshow, name="slideshow"),
 ]

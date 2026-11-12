@@ -1,0 +1,13 @@
+<div class="da-bars">
+  {% for row in rows %}
+    <div class="da-bar-row">
+      <div class="da-bar-meta">
+        <strong>{{ row.label }}</strong>
+        <span>{{ row.value }}</span>
+      </div>
+      <div class="da-bar-track"><i style="width: {{ row.pct }}%"></i></div>
+    </div>
+  {% empty %}
+    <p class="empty">{{ empty|default:"No data." }}</p>
+  {% endfor %}
+</div>

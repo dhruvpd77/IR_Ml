@@ -54,17 +54,58 @@
     {% endif %}
     {% if open_rework %}{% include "includes/rework_panel.html" %}{% endif %}
     {% for group in groups %}
-      <section class="sheet-section tone-section {% if group.name == 'Fill as per pressure rating' %}tone-pressure{% elif group.name == 'Belt tension reference' %}tone-belt{% elif group.name == 'Assembly parts' %}tone-parts{% elif group.name == 'Final audit' or group.name == 'Spot audit' %}tone-audit{% endif %}" style="margin-bottom:16px">
+      <section class="sheet-section tone-section {% if group.name == 'Fill as per pressure rating' %}tone-pressure{% elif group.name == 'Major parts details' or group.name == 'Assembly parts' or group.name == 'Ultra Coolant Oil' %}tone-parts{% elif group.name == 'Vibration readings' %}tone-vibration{% elif group.name == 'Belt tension reference' %}tone-belt{% elif group.name == 'Final audit' or group.name == 'Spot audit' %}tone-audit{% endif %}" style="margin-bottom:16px">
       <h3 class="section-title">{{ group.name }}</h3>
-      {% if group.pressure_matrix %}
+      {% if group.general_check_table %}
+        <div class="word-matrix general-check-table">
+          <div class="word-matrix-head" style="grid-template-columns: 1.6fr 1fr;"><span>GENERAL CHECK</span><span>Y/N</span></div>
+          {% for field in group.fields %}
+            <div class="word-matrix-row" style="grid-template-columns: 1.6fr 1fr;">
+              <p>{{ field.label }}</p>
+              <div class="choice-row">
+                {% with current=values|getitem:field.field_key %}
+                  <label><input type="radio" name="f_{{ field.field_key }}" value="Yes" {% if current == "Yes" %}checked{% endif %} {% if not editable %}disabled{% endif %}> Yes</label>
+                  <label><input type="radio" name="f_{{ field.field_key }}" value="No" {% if current == "No" %}checked{% endif %} {% if not editable %}disabled{% endif %}> No</label>
+                {% endwith %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% elif group.oil_matrix %}
+        <div class="word-matrix oil-fill-table">
+          <div class="word-matrix-head" style="grid-template-columns: 1.2fr 1fr;"><span>OIL FILL</span><span>LTR</span></div>
+          {% for row in group.oil_matrix.rows %}
+            <div class="word-matrix-row" style="grid-template-columns: 1.2fr 1fr;">
+              <p>{{ row.name }}</p>
+              <div>{% if row.field %}{% with current=values|getitem:row.field.field_key %}<input class="field-input" name="f_{{ row.field.field_key }}" value="{{ current }}" {% if not editable %}disabled{% endif %}>{% endwith %}{% endif %}</div>
+            </div>
+          {% endfor %}
+        </div>
+      {% elif group.parts_matrix %}
+        <p class="section-note">Major parts details — fill CCN, Make/Brand and Serial / Batch as on the Word job card.</p>
+        <div class="word-matrix parts-table">
+          <div class="word-matrix-head" style="grid-template-columns: 1.3fr repeat({{ group.parts_matrix.columns|length }}, minmax(110px, 1fr));">
+            <span>Description</span>
+            {% for col in group.parts_matrix.columns %}<span>{{ col }}</span>{% endfor %}
+          </div>
+          {% for row in group.parts_matrix.rows %}
+            <div class="word-matrix-row" style="grid-template-columns: 1.3fr repeat({{ group.parts_matrix.columns|length }}, minmax(110px, 1fr));">
+              <p>{{ row.name }}</p>
+              {% for field in row.cells %}
+                <div>{% if field %}{% with current=values|getitem:field.field_key %}<input class="field-input" name="f_{{ field.field_key }}" value="{{ current }}" {% if not editable %}disabled{% endif %}>{% endwith %}{% else %}<span class="muted">—</span>{% endif %}</div>
+              {% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+      {% elif group.pressure_matrix %}
         <p class="section-note">Fill the table as per pressure rating of machine (CCN).</p>
-        <div class="pressure-table">
-          <div class="pressure-head" style="grid-template-columns: 1.4fr repeat({{ group.pressure_matrix.bars|length }}, minmax(90px, 1fr));">
+        <div class="word-matrix pressure-table">
+          <div class="word-matrix-head pressure-head" style="grid-template-columns: 1.4fr repeat({{ group.pressure_matrix.bars|length }}, minmax(90px, 1fr));">
             <span>CCN</span>
             {% for bar in group.pressure_matrix.bars %}<span>{{ bar }}</span>{% endfor %}
           </div>
           {% for row in group.pressure_matrix.rows %}
-            <div class="pressure-row" style="grid-template-columns: 1.4fr repeat({{ group.pressure_matrix.bars|length }}, minmax(90px, 1fr));">
+            <div class="word-matrix-row pressure-row" style="grid-template-columns: 1.4fr repeat({{ group.pressure_matrix.bars|length }}, minmax(90px, 1fr));">
               <p>{{ row.name }}</p>
               {% for field in row.cells %}
                 <div>
@@ -86,6 +127,22 @@
             </div>
           {% endwith %}
         {% endif %}
+      {% elif group.vibration_matrix %}
+        <p class="section-note">Record vibration readings (mm/sec) and conformance to engg spec.</p>
+        <div class="word-matrix vibration-table">
+          <div class="word-matrix-head" style="grid-template-columns: 1.2fr repeat({{ group.vibration_matrix.columns|length }}, minmax(110px, 1fr));">
+            <span>Position</span>
+            {% for col in group.vibration_matrix.columns %}<span>{{ col }}</span>{% endfor %}
+          </div>
+          {% for row in group.vibration_matrix.rows %}
+            <div class="word-matrix-row" style="grid-template-columns: 1.2fr repeat({{ group.vibration_matrix.columns|length }}, minmax(110px, 1fr));">
+              <p>{{ row.name }}</p>
+              {% for field in row.cells %}
+                <div>{% if field %}{% with current=values|getitem:field.field_key %}<input class="field-input" name="f_{{ field.field_key }}" value="{{ current }}" {% if not editable %}disabled{% endif %}>{% endwith %}{% else %}<span class="muted">—</span>{% endif %}</div>
+              {% endfor %}
+            </div>
+          {% endfor %}
+        </div>
       {% elif group.belt_notes %}
         {% for note in group.belt_notes %}
           <div class="belt-chart">{% if note.help_text %}{% if note.help_text|slice:":11" == "belt_chart|" %}{{ note.help_text|slice:"11:" }}{% else %}{{ note.help_text }}{% endif %}{% else %}{{ note.label }}{% endif %}</div>

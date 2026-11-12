@@ -239,6 +239,7 @@ def _chip_payload(chip):
         "rework": chip["rework"],
         "caption": chip["caption"],
         "serial": chip["serial"],
+        "model": chip.get("model") or "",
         "where": chip["where"],
         "dots": chip["dots"],
     }

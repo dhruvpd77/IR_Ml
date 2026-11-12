@@ -4,7 +4,7 @@ from django.urls import reverse
 from core.constants import PHASE_ROLE, PhaseCode, PhaseStatus, Roles
 
 
-BOARD_URLS = {"core:monthly", "core:daily", "core:analytics", "core:slideshow"}
+BOARD_URLS = {"core:monthly", "core:daily", "core:analytics", "core:details_analytics", "core:slideshow"}
 
 
 def _visible(user, item):
@@ -30,6 +30,7 @@ NAV_ITEMS = [
     {"label": "Daily dashboard", "url": "core:daily", "icon": "calendar-days", "management": True, "roles": {Roles.GENERAL_USER}, "highlight": ["daily"]},
     {"label": "Tentative planning", "url": "core:tentative", "icon": "calendar-range", "super_admin": True, "highlight": ["tentative"]},
     {"label": "Machine Analytics", "url": "core:analytics", "icon": "layout-grid", "management": True, "roles": {Roles.GENERAL_USER}, "highlight": ["analytics"]},
+    {"label": "Details Analytics", "url": "core:details_analytics", "icon": "bar-chart-2", "management": True, "roles": {Roles.GENERAL_USER}, "highlight": ["details_analytics"]},
     {"label": "Slideshow", "url": "core:slideshow", "icon": "monitor-play", "management": True, "roles": {Roles.GENERAL_USER}, "highlight": ["slideshow"]},
     {"label": "All Machines", "url": "machines:list", "icon": "cpu", "highlight": ["list", "detail", "edit", "create", "bulk"]},
     {"label": "Track", "url": "machines:track", "icon": "route", "management": True, "highlight": ["track"]},

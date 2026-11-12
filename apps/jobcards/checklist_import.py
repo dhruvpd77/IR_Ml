@@ -21,6 +21,9 @@ BEFORE = re.compile(r"before\s+testing", re.I)
 DURING = re.compile(r"during\s+testing", re.I)
 AFTER = re.compile(r"after\s+testing", re.I)
 GENERAL = re.compile(r"general\s+check", re.I)
+VIBRATION_HDR = re.compile(r"vai?bration\s+data", re.I)
+OIL_FILL_HDR = re.compile(r"oil\s+fill", re.I)
+AIREND_TEMP_HDR = re.compile(r"airend\s+dis\.?\s*temp", re.I)
 SIGN_OFF = re.compile(
     r"assembled\s+by|sub\s+assembled|pkg\s+assembled|tested\s+by|testing\s+result|tesitng\s+result|if\s+not\s+ok",
     re.I,
@@ -31,6 +34,9 @@ PARTISH = re.compile(
 )
 SKIP_ROW = re.compile(r"owner of document|planning date|stock date|name of customer|fill below|apex|small industrial|ultra coolant|fluidforce|aeon", re.I)
 NUM = re.compile(r"^\d+[a-zA-Z]?$")
+GEN_CHECK_ITEM = re.compile(r"earth\s+checked|temp\.?\s*trip|amp\s+trip|moisture\s+checked", re.I)
+VIB_AXIS = re.compile(r"^(axial|vertical|horizontal)$", re.I)
+OIL_STEP = re.compile(r"^(1st|2nd|3rd|first|second|third|total)$", re.I)
 
 
 def _text(value):
@@ -72,6 +78,10 @@ def _short(prefix, label, section, used, unit=""):
     return (_field_key(prefix, label, used), section, label[:200], "short_text", False, unit, "")
 
 
+def _field_tuple(key, section, label, field_type="short_text", required=False, unit="", extra=""):
+    return (key, section, label, field_type, required, unit, extra)
+
+
 def _split_number_label(cells):
     """Find a checklist number + label pair anywhere in the row."""
     for index, value in enumerate(cells):
@@ -85,6 +95,142 @@ def _split_number_label(cells):
     return "", ""
 
 
+def _cell(ws, row, col):
+    return _text(ws.cell(row, col).value)
+
+
+def _row_values(ws, row, max_col=20):
+    return [_cell(ws, row, col) for col in range(1, max_col + 1)]
+
+
+def _find_col(values, pattern):
+    for index, value in enumerate(values, start=1):
+        if value and pattern.search(value):
+            return index
+    return None
+
+
+def _parse_post_testing_tables(ws, header_row, testing_fields, used):
+    """Parse GENERAL CHECK + VIBRATION DATA + OIL FILL (+ airend temp) block from Excel."""
+    header = _row_values(ws, header_row, 20)
+    if not any(GENERAL.search(value) for value in header if value):
+        return False
+
+    oil_col = _find_col(header, OIL_FILL_HDR) or 14
+    temp_col = _find_col(header, AIREND_TEMP_HDR)
+    has_vib = any(VIBRATION_HDR.search(value) for value in header if value)
+
+    # Sub-header row usually has LOAD/UNLOAD 1/2 markers.
+    sub = _row_values(ws, header_row + 1, 20)
+    load_cols = []
+    unload_cols = []
+    # Prefer numeric 1/2 under LOAD / UNLOAD bands (cols 8-11 on shop sheets).
+    for col in range(7, 13):
+        value = sub[col - 1] if col - 1 < len(sub) else ""
+        if value in {"1", "2"}:
+            if col <= 9 and len(load_cols) < 2:
+                load_cols.append(col)
+            elif col >= 10 and len(unload_cols) < 2:
+                unload_cols.append(col)
+    if len(load_cols) < 2:
+        load_cols = [8, 9]
+    if len(unload_cols) < 2:
+        unload_cols = [10, 11]
+
+    vib_cols = [
+        ("LOAD 1", load_cols[0]),
+        ("LOAD 2", load_cols[1]),
+        ("UNLOAD 1", unload_cols[0]),
+        ("UNLOAD 2", unload_cols[1]),
+    ]
+
+    general_fields = []
+    vibration_fields = []
+    oil_fields = []
+    temp_fields = []
+
+    if temp_col:
+        temp_fields.append(
+            _field_tuple(
+                _field_key("temp", "airend_dis_temp", used),
+                "Airend discharge temp",
+                "AIREND DIS. TEMP. (°C)",
+                field_type="decimal",
+                unit="°C",
+            )
+        )
+
+    for offset in range(1, 6):
+        row = header_row + offset
+        values = _row_values(ws, row, 20)
+        if not any(values):
+            continue
+        joined = " | ".join(value for value in values if value)
+        if EOL_HEADER.search(joined):
+            break
+
+        left = values[0]
+        if left and GEN_CHECK_ITEM.search(left):
+            general_fields.append(
+                (
+                    _field_key("gen", left, used),
+                    "General check",
+                    left[:200],
+                    "yes_no",
+                    False,
+                    "",
+                    "",
+                )
+            )
+
+        axis = ""
+        for value in values:
+            if value and VIB_AXIS.match(value.strip()):
+                axis = value.strip().upper()
+                break
+        if has_vib and axis:
+            for col_name, _col in vib_cols:
+                vibration_fields.append(
+                    _field_tuple(
+                        _field_key("vib", f"{axis}_{col_name}", used),
+                        "Vibration data",
+                        f"{axis} — {col_name}",
+                        field_type="decimal",
+                        unit="mm/s",
+                        extra=f"vib|{axis}|{col_name}",
+                    )
+                )
+
+        oil_label = ""
+        oil_value = values[oil_col - 1] if oil_col - 1 < len(values) else ""
+        if oil_value and OIL_STEP.match(oil_value.strip()):
+            oil_label = oil_value.strip().upper()
+            if oil_label == "FIRST":
+                oil_label = "1ST"
+            elif oil_label == "SECOND":
+                oil_label = "2ND"
+            elif oil_label == "THIRD":
+                oil_label = "3RD"
+        if oil_label:
+            oil_fields.append(
+                _field_tuple(
+                    _field_key("oil", oil_label, used),
+                    "Oil fill",
+                    oil_label,
+                    field_type="decimal",
+                    unit="LTR",
+                    extra=f"oil|{oil_label}|LTR",
+                )
+            )
+
+    # Same left-to-right order as the Excel block.
+    testing_fields.extend(general_fields)
+    testing_fields.extend(vibration_fields)
+    testing_fields.extend(temp_fields)
+    testing_fields.extend(oil_fields)
+    return True
+
+
 def parse_sheet(worksheet, sheet_name):
     """Return Assembly/Testing field lists for one checklist sheet."""
     checklist_key = normalize_job_card_key(sheet_name)
@@ -93,9 +239,14 @@ def parse_sheet(worksheet, sheet_name):
     assembly_fields = []
     testing_fields = []
     used = set()
+    skip_until = 0
+    max_row = worksheet.max_row or 0
 
-    for row in worksheet.iter_rows(values_only=True):
-        cells = _nonempty(row)
+    for row_idx in range(1, max_row + 1):
+        if row_idx <= skip_until:
+            continue
+        raw = _row_values(worksheet, row_idx, 20)
+        cells = [value for value in raw if value]
         if not cells:
             continue
         joined = " | ".join(cells)
@@ -118,12 +269,23 @@ def parse_sheet(worksheet, sheet_name):
             if mode in {"parts", "assembly", "audit"}:
                 mode = "audit"
             continue
+
         def _section_header(pattern, max_len=48):
             """True only when a cell is mainly the section title (not a long checklist line)."""
             for cell in cells:
                 if pattern.search(cell) and len(cell) <= max_len:
                     return True
             return False
+
+        # Post-testing Excel block: GENERAL CHECK + vibration + oil fill tables.
+        if _section_header(GENERAL) or (
+            any(GENERAL.search(cell) for cell in cells)
+            and any(VIBRATION_HDR.search(cell) or OIL_FILL_HDR.search(cell) for cell in cells)
+        ):
+            if _parse_post_testing_tables(worksheet, row_idx, testing_fields, used):
+                skip_until = row_idx + 5
+                mode = "testing"
+                continue
 
         # Sheet title rows only — checklist lines can contain ટેસ્ટિંગ / testing.
         if mode != "testing" and _section_header(TESTING_HEADER):
@@ -140,10 +302,6 @@ def parse_sheet(worksheet, sheet_name):
         elif mode in {"testing", "audit", "assembly", "parts"} and _section_header(AFTER):
             mode = "testing"
             test_section = "After testing"
-        elif _section_header(GENERAL):
-            mode = "testing"
-            test_section = "General check"
-            continue
 
         if mode == "parts":
             for cell in cells:
@@ -172,7 +330,7 @@ def parse_sheet(worksheet, sheet_name):
             continue
 
         if mode == "testing":
-            if any(SIGN_OFF.search(cell) for cell in cells) and test_section != "General check":
+            if any(SIGN_OFF.search(cell) for cell in cells):
                 for cell in cells:
                     clean = cell.rstrip(":").strip()
                     if re.search(r"tested\s+by", clean, re.I):
@@ -193,13 +351,6 @@ def parse_sheet(worksheet, sheet_name):
                         testing_fields.append(
                             (_field_key("test", "report_problem", used), "If not OK", "If not OK — report problem", "short_text", False, "", "")
                         )
-                continue
-            if test_section == "General check":
-                for cell in cells:
-                    if re.search(r"checked|earth|temp|amp|moisture|axial|vertical|horizontal|load|unload|vibration|oil fill", cell, re.I):
-                        if cell.upper() in {"Y/N", "YN"}:
-                            continue
-                        testing_fields.append(_short("gen", cell, "General check", used))
                 continue
             number, label = _split_number_label(cells)
             # BEFORE TESTING row often has section title + number + label
@@ -226,7 +377,7 @@ def _pack_field_extra(field_type, extra=""):
         return [item.strip() for item in extra.split("|") if item.strip()], ""
     if extra.startswith("help:"):
         return [], extra[5:][:240]
-    if extra.startswith("belt_chart|") or extra.startswith("press|"):
+    if extra.startswith(("belt_chart|", "press|", "parts|", "vib|", "oil|")):
         return [], extra[:240]
     return [], ""
 
@@ -260,7 +411,7 @@ def _field_extra_for_fingerprint(field_type, options=None, help_text="", extra="
     if extra:
         return extra
     if help_text:
-        if help_text.startswith("press|") or help_text.startswith("belt_chart|"):
+        if help_text.startswith(("press|", "belt_chart|", "parts|", "vib|", "oil|")):
             return help_text
         return f"help:{help_text}"
     return ""
