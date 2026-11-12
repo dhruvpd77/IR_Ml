@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% load mqms %}
+{% block title %}History of Machine{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Records</p>
+    <h1>History of Machine</h1>
+    <p class="muted">Search machines, open the full job card, or view the phase timeline.</p>
+  </div>
+</div>
+
+<form class="filters mh-filters" method="get">
+  <input class="field-input" type="search" name="q" value="{{ filters.q }}" placeholder="Search machine, serial, model, company">
+  <input class="field-input" type="text" name="work_order" value="{{ filters.work_order }}" placeholder="Work order">
+  <input class="field-input" type="text" name="ccn" value="{{ filters.ccn }}" placeholder="CCN">
+  <input class="field-input" type="text" name="model" value="{{ filters.model }}" placeholder="Model name">
+  <input class="field-input" type="text" name="serial" value="{{ filters.serial }}" placeholder="Serial">
+  <select class="field-input" name="company">
+    <option value="">All companies</option>
+    {% for company in company_choices %}
+      <option value="{{ company }}" {% if filters.company == company %}selected{% endif %}>{{ company }}</option>
+    {% endfor %}
+  </select>
+  <select class="field-input" name="machine_type">
+    <option value="">All types</option>
+    {% for type in type_choices %}
+      <option value="{{ type }}" {% if filters.machine_type == type %}selected{% endif %}>{{ type }}</option>
+    {% endfor %}
+  </select>
+  <select class="field-input" name="status">
+    <option value="">All statuses</option>
+    {% for value, label in statuses %}
+      <option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <select class="field-input" name="priority">
+    <option value="">All priorities</option>
+    {% for value, label in priorities %}
+      <option value="{{ value }}" {% if filters.priority == value %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <select class="field-input" name="phase">
+    <option value="">All phases</option>
+    {% for value, label in phases %}
+      <option value="{{ value }}" {% if filters.phase == value %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  {% include "includes/station_select.html" with name="station" empty="All stations" selected=filters.station %}
+  <label class="mh-date">
+    <span>From</span>
+    <input class="field-input" type="date" name="created_from" value="{{ filters.created_from }}">
+  </label>
+  <label class="mh-date">
+    <span>To</span>
+    <input class="field-input" type="date" name="created_to" value="{{ filters.created_to }}">
+  </label>
+  <select class="field-input" name="rework">
+    <option value="">Rework: any</option>
+    <option value="yes" {% if filters.rework == "yes" %}selected{% endif %}>Under rework</option>
+  </select>
+  <select class="field-input" name="sort">
+    <option value="created" {% if filters.sort == "created" or not filters.sort %}selected{% endif %}>Sort: created</option>
+    <option value="updated" {% if filters.sort == "updated" %}selected{% endif %}>Sort: updated</option>
+    <option value="machine_id" {% if filters.sort == "machine_id" %}selected{% endif %}>Sort: machine id</option>
+    <option value="work_order" {% if filters.sort == "work_order" %}selected{% endif %}>Sort: work order</option>
+    <option value="model" {% if filters.sort == "model" %}selected{% endif %}>Sort: model</option>
+    <option value="status" {% if filters.sort == "status" %}selected{% endif %}>Sort: status</option>
+  </select>
+  <select class="field-input" name="dir">
+    <option value="desc" {% if filters.dir != "asc" %}selected{% endif %}>Newest first</option>
+    <option value="asc" {% if filters.dir == "asc" %}selected{% endif %}>Oldest first</option>
+  </select>
+  <button class="btn-primary" type="submit">Apply filters</button>
+  <a class="btn-ghost" href="{% url 'machines:history' %}">Clear</a>
+</form>
+
+<div class="mh-list">
+  {% for machine in page %}
+    <article class="mh-row">
+      <div class="mh-main">
+        <div class="mh-id">
+          <a href="{% url 'machines:detail' machine.machine_id %}">{{ machine.machine_id }}</a>
+          <span class="{{ machine.status|badge_class }}">{{ machine.status_label }}</span>
+          <span class="{{ machine.priority|badge_class }}">{{ machine.priority_label }}</span>
+        </div>
+        <h2>{{ machine.planning.model_description|default:"—" }}</h2>
+        <dl class="mh-meta">
+          <div><dt>Company</dt><dd>{{ machine.planning.company|default:"—" }}</dd></div>
+          <div><dt>Type</dt><dd>{{ machine.planning.machine_type|default:"—" }}</dd></div>
+          <div><dt>CCN</dt><dd>{{ machine.planning.ccn|default:"—" }}</dd></div>
+          <div><dt>Work order</dt><dd>{{ machine.planning.work_order|default:"—" }}</dd></div>
+          <div><dt>Serial</dt><dd>{{ machine.planner_serial|default:machine.production_serial|default:"—" }}</dd></div>
+          <div><dt>Station</dt><dd>{{ machine.station.code|default:"—" }}</dd></div>
+          <div><dt>Phase</dt><dd>{{ machine.pipeline }}</dd></div>
+          <div><dt>Created</dt><dd>{{ machine.created_at|date:"d M Y, H:i" }}</dd></div>
+        </dl>
+        <div class="progress mh-progress"><span style="width: {{ machine.progress_percent }}%"></span></div>
+      </div>
+      <div class="mh-actions">
+        <a class="btn-primary" href="{% url 'machines:history_jobcard' machine.machine_id %}">Job card</a>
+        <a class="btn-ghost mh-timeline-btn" href="{% url 'machines:history_timeline' machine.machine_id %}">View timeline</a>
+      </div>
+    </article>
+  {% empty %}
+    <div class="empty card">No machines match these filters.</div>
+  {% endfor %}
+</div>
+{% include "includes/pagination.html" %}
+{% endblock %}

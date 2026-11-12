@@ -63,6 +63,12 @@ GRID_SECTIONS = {
     "testing sign off",
     "end of line",
     "general check",
+    "oil fill",
+    "vibration readings",
+    "vibration data",
+    "major parts details",
+    "fill as per pressure rating",
+    "ultra coolant oil",
 }
 
 
@@ -268,10 +274,21 @@ def _line(item, styles):
     )
 
 
-def _pairs(items, styles):
+def _pairs(items, styles, headers=None):
     rows = []
     spans = []
     pending = None
+    header_offset = 0
+    if headers:
+        rows.append(
+            [
+                _text(headers[0], styles["CardWhite"]),
+                _text(headers[1], styles["CardWhite"]),
+                _text(headers[2], styles["CardWhite"]),
+                _text(headers[3], styles["CardWhite"]),
+            ]
+        )
+        header_offset = 1
     for item in items:
         if item["kind"] in {"long_text", "remarks"}:
             if pending:
@@ -284,35 +301,204 @@ def _pairs(items, styles):
         if pending is None:
             pending = item
             continue
+        left_fill, left_style = _tone(pending["value"])
+        right_fill, right_style = _tone(item["value"])
         rows.append(
             [
                 _text(pending["label"], styles["CardLabel"]),
-                _text(pending["value"], styles["CardValueStrong"]),
+                _text(pending["value"], styles[left_style]),
                 _text(item["label"], styles["CardLabel"]),
-                _text(item["value"], styles["CardValueStrong"]),
+                _text(item["value"], styles[right_style]),
             ]
         )
         pending = None
     if pending:
-        rows.append([_text(pending["label"], styles["CardLabel"]), _text(pending["value"], styles["CardValueStrong"]), "", ""])
+        left_fill, left_style = _tone(pending["value"])
+        rows.append([_text(pending["label"], styles["CardLabel"]), _text(pending["value"], styles[left_style]), "", ""])
         spans.append(len(rows) - 1)
-    if not rows:
+    if not rows or (header_offset and len(rows) == 1):
         return None
     table = Table(rows, colWidths=_widths(24, 26, 24, 26))
     commands = [
-        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#E8EEF6")),
-        ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#E8EEF6")),
-        ("GRID", (0, 0), (-1, -1), 0.3, LINE),
+        ("BACKGROUND", (0, header_offset), (0, -1), colors.HexColor("#E8EEF6")),
+        ("BACKGROUND", (2, header_offset), (2, -1), colors.HexColor("#E8EEF6")),
+        ("GRID", (0, 0), (-1, -1), 0.35, LINE),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (-1, -1), 5),
         ("RIGHTPADDING", (0, 0), (-1, -1), 5),
         ("TOPPADDING", (0, 0), (-1, -1), 4),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]
+    if header_offset:
+        commands.append(("BACKGROUND", (0, 0), (-1, 0), GREEN))
+        commands.append(("ALIGN", (0, 0), (-1, 0), "CENTER"))
     for index in spans:
         commands.append(("SPAN", (1, index), (3, index)))
         commands.append(("BACKGROUND", (2, index), (3, index), colors.white))
     return _paint(table, commands)
+
+
+def _two_col_table(items, styles, left_header="Check", right_header="Result", header_color=None):
+    """Single label/value table with a colored header row."""
+    if not items:
+        return None
+    tone = header_color or GREEN
+    data = [[_text(left_header, styles["CardWhite"]), _text(right_header, styles["CardWhite"])]]
+    for item in items:
+        fill, style_name = _tone(item["value"])
+        data.append([_text(item["label"], styles["CardLabel"]), _text(item["value"], styles[style_name])])
+    table = Table(data, colWidths=_widths(62, 38))
+    commands = [
+        ("BACKGROUND", (0, 0), (-1, 0), tone),
+        ("BACKGROUND", (0, 1), (0, -1), colors.HexColor("#E8EEF6")),
+        ("GRID", (0, 0), (-1, -1), 0.35, LINE),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+    ]
+    for index, item in enumerate(items, start=1):
+        fill, _style = _tone(item["value"])
+        if fill != colors.white:
+            commands.append(("BACKGROUND", (1, index), (1, index), fill))
+    return _paint(table, commands)
+
+
+def _matrix_table(columns, rows, styles, corner="Item", header_color=None):
+    """Excel-style row × column matrix table for PDF."""
+    if not columns or not rows:
+        return None
+    tone = header_color or GREEN
+    header = [_text(corner, styles["CardWhite"])] + [_text(col, styles["CardWhite"]) for col in columns]
+    data = [header]
+    for row in rows:
+        cells = [_text(row["name"], styles["CardLabel"])]
+        for value in row["values"]:
+            fill, style_name = _tone(value)
+            cells.append(_text(value, styles[style_name]))
+        data.append(cells)
+    first = 28
+    rest = max(12, (100 - first) / max(len(columns), 1))
+    widths = _widths(first, *[rest] * len(columns))
+    table = Table(data, colWidths=widths)
+    commands = [
+        ("BACKGROUND", (0, 0), (-1, 0), tone),
+        ("BACKGROUND", (0, 1), (0, -1), colors.HexColor("#E8EEF6")),
+        ("GRID", (0, 0), (-1, -1), 0.35, LINE),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]
+    return _paint(table, commands)
+
+
+def _item_help(item):
+    return (item.get("help_text") or "").strip()
+
+
+def _item_key(item):
+    return (item.get("key") or "").strip().lower()
+
+
+def _matrix_from_items(items, prefix):
+    columns = []
+    rows = {}
+    used = []
+    leftover = []
+    for item in items:
+        help_text = _item_help(item)
+        row_name = col_name = None
+        if help_text.startswith(f"{prefix}|"):
+            parts = help_text.split("|")
+            if len(parts) >= 3:
+                row_name, col_name = parts[1], parts[2]
+        if not row_name:
+            leftover.append(item)
+            continue
+        if col_name not in columns:
+            columns.append(col_name)
+        rows.setdefault(row_name, {})[col_name] = item.get("value") or "—"
+        used.append(item)
+    if not rows:
+        return None, items
+    matrix_rows = [{"name": name, "values": [cells.get(col, "—") for col in columns]} for name, cells in rows.items()]
+    return {"columns": columns, "rows": matrix_rows}, leftover
+
+
+def _split_general_check(items):
+    """Split flat General check fields into Y/N, vibration, and oil tables."""
+    yn, vib, oil, other = [], [], [], []
+    for item in items:
+        key = _item_key(item)
+        label = (item.get("label") or "").lower()
+        if item.get("kind") == "yes_no" or re.search(r"earth|temp\.?\s*trip|amp\s+trip|moisture", label):
+            yn.append(item)
+        elif key.startswith("oil_") or "oil fill" in label:
+            oil.append(item)
+        elif key.startswith("vib_") or "vibration" in label or label in {"axial", "vertical", "horizontal"}:
+            vib.append(item)
+        else:
+            other.append(item)
+    return yn, vib, oil, other
+
+
+def _vibration_matrix_from_flat(items):
+    """Build LOAD/UNLOAD or axis table from flat vibration field keys/labels."""
+    load_unload = {"LOAD 1": None, "LOAD 2": None, "UNLOAD 1": None, "UNLOAD 2": None}
+    axes = {"Axial": None, "Vertical": None, "Horizontal": None}
+    used = []
+    for item in items:
+        key = _item_key(item)
+        label = (item.get("label") or "").lower()
+        value = item.get("value") or "—"
+        matched = False
+        if "load_1" in key or re.search(r"vibration\s+load\s*1", label):
+            load_unload["LOAD 1"] = value
+            matched = True
+        elif "load_2" in key or re.search(r"vibration\s+load\s*2", label):
+            load_unload["LOAD 2"] = value
+            matched = True
+        elif "unload_1" in key or re.search(r"vibration\s+unload\s*1", label):
+            load_unload["UNLOAD 1"] = value
+            matched = True
+        elif "unload_2" in key or re.search(r"vibration\s+unload\s*2", label):
+            load_unload["UNLOAD 2"] = value
+            matched = True
+        elif "axial" in key or label.endswith("axial") or label == "axial":
+            axes["Axial"] = value
+            matched = True
+        elif "vertical" in key or label.endswith("vertical") or label == "vertical":
+            axes["Vertical"] = value
+            matched = True
+        elif "horizontal" in key or label.endswith("horizontal") or label == "horizontal":
+            axes["Horizontal"] = value
+            matched = True
+        if matched:
+            used.append(item)
+    leftover = [item for item in items if item not in used]
+    tables = []
+    if any(v is not None for v in load_unload.values()):
+        tables.append(
+            {
+                "columns": ["LOAD 1", "LOAD 2", "UNLOAD 1", "UNLOAD 2"],
+                "rows": [{"name": "mm/s", "values": [load_unload[c] or "—" for c in ["LOAD 1", "LOAD 2", "UNLOAD 1", "UNLOAD 2"]]}],
+                "corner": "Vibration",
+            }
+        )
+    if any(v is not None for v in axes.values()):
+        tables.append(
+            {
+                "columns": ["Axial", "Vertical", "Horizontal"],
+                "rows": [{"name": "Airend", "values": [axes[c] or "—" for c in ["Axial", "Vertical", "Horizontal"]]}],
+                "corner": "Axis",
+            }
+        )
+    return tables, leftover
 
 
 def _electrical_table(rows, styles):
@@ -354,6 +540,119 @@ def _electrical_table(rows, styles):
     return _paint(table, commands)
 
 
+def _append_table_section(flow, name, bucket, color, styles):
+    flow.append(Spacer(1, 4))
+    flow.append(_banner(name, "", color, styles, size=10))
+    from workflow.presenters import electrical_rows
+
+    bundled = electrical_rows(bucket)
+    if bundled:
+        flow.append(_electrical_table(bundled, styles))
+        return
+
+    section = name.strip().lower()
+
+    for prefix, corner, tone in (
+        ("press", "Pressure", colors.HexColor("#1D4ED8")),
+        ("parts", "Part", colors.HexColor("#1D4ED8")),
+        ("vib", "Point", colors.HexColor("#047857")),
+        ("oil", "Oil fill", colors.HexColor("#B45309")),
+    ):
+        matrix, leftover = _matrix_from_items(bucket, prefix)
+        if matrix:
+            table = _matrix_table(matrix["columns"], matrix["rows"], styles, corner=corner, header_color=tone)
+            if table:
+                flow.append(table)
+            bucket = leftover
+            if not bucket:
+                return
+
+    if section in {"general check", "oil fill", "vibration readings", "vibration data"}:
+        if section == "general check":
+            yn, vib, oil, other = _split_general_check(bucket)
+            if yn:
+                table = _two_col_table(yn, styles, left_header="GENERAL CHECK", right_header="Y / N", header_color=GREEN)
+                if table:
+                    flow.append(table)
+            vib_tables, vib_left = _vibration_matrix_from_flat(vib)
+            for matrix in vib_tables:
+                table = _matrix_table(
+                    matrix["columns"],
+                    matrix["rows"],
+                    styles,
+                    corner=matrix["corner"],
+                    header_color=GREEN,
+                )
+                if table:
+                    flow.append(Spacer(1, 4))
+                    flow.append(table)
+            if vib_left:
+                table = _pairs(vib_left, styles, headers=("Item", "Value", "Item", "Value"))
+                if table:
+                    flow.append(Spacer(1, 4))
+                    flow.append(table)
+            if oil:
+                flow.append(Spacer(1, 4))
+                table = _two_col_table(oil, styles, left_header="OIL FILL", right_header="LTR", header_color=colors.HexColor("#B45309"))
+                if table:
+                    flow.append(table)
+            if other:
+                table = _pairs(other, styles, headers=("Item", "Value", "Item", "Value"))
+                if table:
+                    flow.append(Spacer(1, 4))
+                    flow.append(table)
+            return
+
+        if section in {"vibration readings", "vibration data"}:
+            matrix, leftover = _matrix_from_items(bucket, "vib")
+            if matrix:
+                table = _matrix_table(matrix["columns"], matrix["rows"], styles, corner="Point", header_color=GREEN)
+                if table:
+                    flow.append(table)
+                bucket = leftover
+            vib_tables, leftover = _vibration_matrix_from_flat(bucket)
+            for matrix in vib_tables:
+                table = _matrix_table(matrix["columns"], matrix["rows"], styles, corner=matrix["corner"], header_color=GREEN)
+                if table:
+                    flow.append(Spacer(1, 4))
+                    flow.append(table)
+            bucket = leftover
+            if bucket:
+                table = _pairs(bucket, styles, headers=("Item", "Value", "Item", "Value"))
+                if table:
+                    flow.append(table)
+            return
+
+        if section == "oil fill":
+            table = _two_col_table(bucket, styles, left_header="OIL FILL", right_header="LTR", header_color=colors.HexColor("#B45309"))
+            if table:
+                flow.append(table)
+            return
+
+    grid = section in GRID_SECTIONS
+    if grid:
+        headers = ("Item", "Value", "Item", "Value")
+        if section in {"assembly sign off", "testing sign off", "end of line"}:
+            headers = ("Field", "Value", "Field", "Value")
+        table = _pairs(bucket, styles, headers=headers)
+        if table:
+            flow.append(table)
+        return
+
+    # Fallback: still prefer a compact table when the section is mostly short answers.
+    short = [item for item in bucket if item.get("kind") not in {"long_text", "remarks", "video"}]
+    long_items = [item for item in bucket if item.get("kind") in {"long_text", "remarks", "video"}]
+    if len(short) >= 2 and len(short) >= len(long_items):
+        table = _pairs(short, styles, headers=("Item", "Value", "Item", "Value"))
+        if table:
+            flow.append(table)
+        for item in long_items:
+            flow.append(_line(item, styles))
+        return
+    for item in bucket:
+        flow.append(_line(item, styles))
+
+
 def _section_flow(items, color, styles):
     flow = []
     grouped = []
@@ -369,23 +668,8 @@ def _section_flow(items, color, styles):
             bucket.append(item)
     if bucket:
         grouped.append((current, bucket))
-    from workflow.presenters import electrical_rows
-
     for name, bucket in grouped:
-        flow.append(Spacer(1, 4))
-        flow.append(_banner(name, "", color, styles, size=10))
-        bundled = electrical_rows(bucket)
-        if bundled:
-            flow.append(_electrical_table(bundled, styles))
-            continue
-        grid = name.strip().lower() in GRID_SECTIONS
-        if grid:
-            table = _pairs(bucket, styles)
-            if table:
-                flow.append(table)
-        else:
-            for item in bucket:
-                flow.append(_line(item, styles))
+        _append_table_section(flow, name, bucket, color, styles)
     return flow
 
 

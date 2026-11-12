@@ -174,17 +174,31 @@ def settings_view(request):
         "machine_id_prefix": get_setting("machine_id_prefix", "IR-MCH-"),
         "duplicate_fields": get_setting("duplicate_fields", "work_order,ccn,model_description"),
         "retention_note": get_setting("retention_note", ""),
+        "completion_email_enabled": get_setting("completion_email_enabled", "yes"),
+        "completion_email_to": get_setting("completion_email_to", ""),
     }
     form = SettingsForm(request.POST or None, request.FILES or None, initial=None if request.method == "POST" else initial)
     if request.method == "POST" and form.is_valid():
         for key, value in form.cleaned_data.items():
             if key == "logo":
                 continue
-            set_setting(key, value.strip(), user=request.user, label=form.fields[key].label)
+            text = value if isinstance(value, str) else str(value or "")
+            set_setting(key, text.strip(), user=request.user, label=form.fields[key].label)
         upload = form.cleaned_data.get("logo")
         if upload:
             CompanyLogo.objects.create(image=upload, updated_by=request.user)
         log_audit(request.user, "settings.update", changes={"settings": True, "logo": bool(upload)}, request=request)
         messages.success(request, "System settings saved.")
         return redirect("accounts:settings")
-    return render(request, "accounts/settings.html", {"form": form, "logo": CompanyLogo.objects.order_by("-pk").first()})
+    from django.conf import settings as django_settings
+
+    return render(
+        request,
+        "accounts/settings.html",
+        {
+            "form": form,
+            "logo": CompanyLogo.objects.order_by("-pk").first(),
+            "mail_from": getattr(django_settings, "DEFAULT_FROM_EMAIL", "rotaryir8@gmail.com"),
+            "mail_ready": bool(getattr(django_settings, "EMAIL_HOST_PASSWORD", "")),
+        },
+    )

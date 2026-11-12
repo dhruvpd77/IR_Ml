@@ -644,6 +644,9 @@ def approve_qc(machine, user, answers, files=None, remarks="", require_all=False
             exclude_user=user,
         )
         log_audit(user, "qc.approve", instance=machine)
+        from notifications.completion_mail import queue_completion_email
+
+        queue_completion_email(machine)
         return machine
 
 

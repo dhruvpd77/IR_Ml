@@ -88,7 +88,7 @@
   </label>
   <label>
     <span>Search all</span>
-    <input class="field-input" type="search" name="q" value="{{ query }}" placeholder="Model, CCN, brand, type, job card">
+    <input class="field-input" type="search" name="q" value="{{ query }}" placeholder="Model, machine name, CCN, brand, type, job card">
   </label>
   <div class="catalog-filter-actions">
     <button class="btn-primary" type="submit">Apply filters</button>
@@ -103,6 +103,7 @@
         <th>Brand</th>
         <th>Type</th>
         <th>Model description</th>
+        <th>Machine name</th>
         <th>CCN</th>
         <th>Job card name</th>
         <th>Source</th>
@@ -114,6 +115,7 @@
           <td>{{ item.company }}</td>
           <td>{{ item.machine_type }}</td>
           <td>{{ item.model_description }}</td>
+          <td>{% if item.machine_name %}<strong>{{ item.machine_name }}</strong>{% else %}<span class="muted">—</span>{% endif %}</td>
           <td>{{ item.ccn }}</td>
           <td>
             {% if item.job_card_key %}
@@ -133,7 +135,7 @@
           </td>
         </tr>
       {% empty %}
-        <tr><td colspan="6" class="empty">No models match these filters.</td></tr>
+        <tr><td colspan="7" class="empty">No models match these filters.</td></tr>
       {% endfor %}
     </tbody>
   </table>

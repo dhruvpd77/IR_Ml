@@ -45,6 +45,19 @@ def _word(state):
     }.get(state.status, state.status.title())
 
 
+PHASE_TRACK_COLORS = {
+    PhaseCode.PLANNING: "#0B1D36",
+    PhaseCode.PLANNER: "#1D4ED8",
+    PhaseCode.PRODUCTION: "#0369A1",
+    PhaseCode.ASSEMBLY: "#1D4ED8",
+    PhaseCode.ELECTRICAL: "#B45309",
+    PhaseCode.WAITING: "#7C3AED",
+    PhaseCode.TESTING: "#047857",
+    PhaseCode.EOL: "#6D28D9",
+    PhaseCode.QC: "#E10600",
+}
+
+
 def tracking_steps(machine):
     phases = list(ProductionPhase.objects.filter(is_active=True).order_by("sequence", "name"))
     states = {state.phase_id: state for state in machine.phase_states.select_related("phase", "completed_by", "started_by")}
@@ -59,9 +72,12 @@ def tracking_steps(machine):
             "started_at": state.started_at if state else None,
             "completed_at": state.completed_at if state else None,
             "actor": (state.completed_by or state.started_by) if state else None,
+            "started_by": state.started_by if state else None,
+            "completed_by": state.completed_by if state else None,
             "duration": format_duration(state.started_at, state.completed_at) if state and state.started_at else "—",
             "cycle": state.cycle if state else 1,
             "rework_open": bool(state and state.rework_open),
+            "color": PHASE_TRACK_COLORS.get(phase.code, "#64748B"),
         }
         if groups and phase.parallel_group and groups[-1]["parallel"] and groups[-1]["sequence"] == phase.sequence:
             groups[-1]["phases"].append(entry)
@@ -74,6 +90,78 @@ def tracking_steps(machine):
                 }
             )
     return groups
+
+
+def history_journey(machine):
+    """Flat colorful phase journey for History of Machine timeline."""
+    planning = getattr(machine, "planning", None)
+    journey = []
+    planning_person = _person((planning.submitted_by if planning else None) or machine.created_by)
+    planning_when = (planning.submitted_at if planning else None) or machine.created_at
+    journey.append(
+        {
+            "code": PhaseCode.PLANNING,
+            "name": "Planning",
+            "status": PhaseStatus.COMPLETED if planning_when else PhaseStatus.PENDING,
+            "status_label": "Completed" if planning_when else "Pending",
+            "color": PHASE_TRACK_COLORS[PhaseCode.PLANNING],
+            "actor_name": planning_person or "—",
+            "started_by_name": planning_person or "—",
+            "completed_by_name": planning_person or "—",
+            "started_at": machine.created_at,
+            "completed_at": planning_when,
+            "duration": format_duration(machine.created_at, planning_when) if planning_when else "—",
+            "detail": (planning.work_order if planning else "") or "",
+            "cycle": 1,
+            "rework_open": False,
+            "is_current": machine.current_phase == PhaseCode.PLANNING and machine.status == MachineStatus.DRAFT,
+        }
+    )
+    seen_planning = False
+    for group in tracking_steps(machine):
+        for phase in group["phases"]:
+            if phase["code"] == PhaseCode.PLANNING:
+                seen_planning = True
+                # Prefer live phase-state timing when available
+                if phase["started_at"] or phase["completed_at"]:
+                    journey[0].update(
+                        {
+                            "status": phase["status"],
+                            "status_label": phase["status_label"],
+                            "started_at": phase["started_at"] or journey[0]["started_at"],
+                            "completed_at": phase["completed_at"] or journey[0]["completed_at"],
+                            "duration": phase["duration"] if phase["duration"] != "—" else journey[0]["duration"],
+                            "actor_name": _person(phase["actor"]) or journey[0]["actor_name"],
+                            "started_by_name": _person(phase.get("started_by")) or journey[0]["started_by_name"],
+                            "completed_by_name": _person(phase.get("completed_by")) or journey[0]["completed_by_name"],
+                            "is_current": phase["status"] == PhaseStatus.IN_PROGRESS,
+                        }
+                    )
+                continue
+            journey.append(
+                {
+                    "code": phase["code"],
+                    "name": phase["name"],
+                    "status": phase["status"],
+                    "status_label": phase["status_label"],
+                    "color": phase["color"],
+                    "actor_name": _person(phase["actor"]) or "—",
+                    "started_by_name": _person(phase.get("started_by")) or "—",
+                    "completed_by_name": _person(phase.get("completed_by")) or "—",
+                    "started_at": phase["started_at"],
+                    "completed_at": phase["completed_at"],
+                    "duration": phase["duration"],
+                    "detail": "",
+                    "cycle": phase["cycle"],
+                    "rework_open": phase["rework_open"],
+                    "is_current": phase["status"] == PhaseStatus.IN_PROGRESS,
+                }
+            )
+    if not seen_planning and machine.current_phase == PhaseCode.PLANNING:
+        journey[0]["is_current"] = True
+        journey[0]["status"] = PhaseStatus.IN_PROGRESS
+        journey[0]["status_label"] = "In progress"
+    return journey
 
 
 def _field(label, value, wide=False):
@@ -252,6 +340,7 @@ def card_items(template, submission=None):
                 "value": value,
                 "tone": _answer_tone(value),
                 "gujarati": _gujarati(field.label),
+                "help_text": field.help_text or "",
                 "media_url": media_urls[0] if media_urls else "",
                 "media_urls": media_urls,
             }

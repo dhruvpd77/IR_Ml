@@ -160,7 +160,7 @@
       `<i class="live-dot" style="--c: ${esc(dot.color)}" title="${esc(dot.label)}"></i>`
     )).join("");
     const rework = machine.rework ? " is-rework" : "";
-    return `<a class="floor-pill tone-${esc(machine.tone)}${rework}" href="${esc(machine.url)}" title="${esc(machine.caption)}"><span class="spot-dots" aria-hidden="true">${dots}</span><span class="pill-id">${esc(machine.id)}</span></a>`;
+    return `<a class="floor-pill tone-${esc(machine.tone)}${rework}" href="${esc(machine.url)}" title="${esc(machine.caption)}"><span class="spot-dots" aria-hidden="true">${dots}</span><span class="pill-id">${esc(machine.label || machine.id)}</span></a>`;
   };
 
   const setHeat = (node, heat) => {

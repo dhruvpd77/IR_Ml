@@ -67,6 +67,17 @@ class SettingsForm(forms.Form):
         help_text="Comma-separated planning fields. Example: work_order,ccn,model_description",
     )
     retention_note = forms.CharField(label="Retention note", widget=forms.Textarea(attrs={"rows": 3}))
+    completion_email_enabled = forms.ChoiceField(
+        label="Send email when QC completes",
+        choices=[("yes", "Yes — send automatically"), ("no", "No — do not send")],
+        help_text="After Quality Control approves a machine, email the full job card PDF.",
+    )
+    completion_email_to = forms.CharField(
+        required=False,
+        label="Completion email recipients",
+        help_text="One or more inboxes, separated by commas. Example: ops@company.com, qc@company.com. Sent from rotaryir8@gmail.com.",
+        widget=forms.TextInput(attrs={"placeholder": "email1@company.com, email2@company.com"}),
+    )
     logo = forms.ImageField(
         required=False,
         label="Job card logo",
@@ -76,3 +87,34 @@ class SettingsForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         style_form(self)
+
+    def clean_completion_email_to(self):
+        from django.core.validators import validate_email
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        raw = (self.cleaned_data.get("completion_email_to") or "").strip()
+        if not raw:
+            return ""
+        parts = [part.strip() for part in raw.replace(";", ",").split(",") if part.strip()]
+        if not parts:
+            return ""
+        cleaned = []
+        bad = []
+        for part in parts:
+            try:
+                validate_email(part)
+            except DjangoValidationError:
+                bad.append(part)
+            else:
+                cleaned.append(part)
+        if bad:
+            raise forms.ValidationError("Invalid email address: " + ", ".join(bad))
+        return ", ".join(cleaned)
+
+    def clean(self):
+        cleaned = super().clean()
+        enabled = (cleaned.get("completion_email_enabled") or "no") == "yes"
+        recipient = (cleaned.get("completion_email_to") or "").strip()
+        if enabled and not recipient:
+            self.add_error("completion_email_to", "Enter at least one recipient email when automatic mail is enabled.")
+        return cleaned

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% load mqms %}
+{% block title %}Job card · {{ machine.machine_id }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="crumbs">
+      <a href="{% url 'machines:history' %}">History of Machine</a> / {{ machine.machine_id }}
+    </p>
+    <p class="eyebrow">{{ pipeline }}</p>
+    <h1>Job card · {{ machine.machine_id }}</h1>
+    <p class="muted">
+      {{ machine.planning.model_description }} · CCN {{ machine.planning.ccn|default:"—" }} · WO {{ machine.planning.work_order|default:"—" }}
+    </p>
+  </div>
+  <div class="btn-row no-print">
+    <a class="btn-ghost" href="{% url 'machines:history_timeline' machine.machine_id %}">View timeline</a>
+    <a class="btn-ghost" href="{% url 'reports:machine_excel' machine.machine_id %}">Excel</a>
+    <a class="btn-primary" href="{% url 'reports:machine_pdf' machine.machine_id %}">Job card PDF</a>
+  </div>
+</div>
+
+<div class="progress mh-progress" style="margin-bottom:14px"><span style="width: {{ progress }}%"></span></div>
+{% include "includes/job_card.html" %}
+{% endblock %}

@@ -6,6 +6,14 @@
   {% csrf_token %}
   {% if logo %}<p class="muted">Current job card logo</p><img class="brand-logo" src="{{ logo.image.url }}" alt="Job card logo">{% endif %}
   {% for field in form %}{% include "includes/field.html" %}{% endfor %}
+  <div class="message {% if mail_ready %}message-success{% else %}message-warning{% endif %}">
+    Completion emails send from <strong>{{ mail_from }}</strong>.
+    {% if mail_ready %}
+      Gmail SMTP password is configured on the server.
+    {% else %}
+      Set <code>EMAIL_HOST_PASSWORD</code> in <code>.env</code> to the Gmail app password for rotaryir8@gmail.com, then restart the app.
+    {% endif %}
+  </div>
   <button class="btn-primary" type="submit">Save settings</button>
 </form>
 {% endblock %}

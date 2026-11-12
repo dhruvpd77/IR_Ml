@@ -101,6 +101,13 @@ class MachinePlanningData(models.Model):
     work_order = models.CharField(max_length=80, db_index=True)
     ccn = models.CharField(max_length=80, blank=True, db_index=True)
     model_description = models.CharField(max_length=240, db_index=True)
+    machine_name = models.CharField(
+        max_length=160,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Short name from Model Catalog (Excel machine NAME column).",
+    )
     machine_type = models.CharField(max_length=120, blank=True)
     calibration = models.CharField(max_length=160, blank=True)
     shift = models.CharField(max_length=40, blank=True)
@@ -175,6 +182,13 @@ class PlanningCatalogItem(models.Model):
     machine_type = models.CharField(max_length=120, db_index=True)
     model_description = models.CharField(max_length=240)
     ccn = models.CharField(max_length=80)
+    machine_name = models.CharField(
+        max_length=160,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Short machine name from Excel column machine NAME (e.g. ML37IE-A7.5).",
+    )
     job_card_key = models.CharField(
         max_length=160,
         blank=True,

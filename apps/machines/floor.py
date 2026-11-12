@@ -100,10 +100,13 @@ def _heat(count):
 
 
 def _chip(machine, zone):
+    from machines.catalog import display_name_for_machine
+
     planning = machine.planning if hasattr(machine, "planning") else None
     serial = machine.planner_serial or machine.production_serial or ""
     model = planning.model_description if planning else ""
     work_order = planning.work_order if planning else ""
+    label = display_name_for_machine(machine)
     dots = _dots(machine, zone)
     detail = " · ".join(dot["label"] for dot in dots)
     labels = {dot["label"] for dot in dots}
@@ -123,6 +126,7 @@ def _chip(machine, zone):
         tone = "assembly"
     return {
         "id": machine.machine_id,
+        "label": label,
         "serial": serial or "No serial",
         "model": model,
         "work_order": work_order,
@@ -132,7 +136,7 @@ def _chip(machine, zone):
         "dots": dots,
         "tone": tone,
         "where": detail,
-        "caption": " · ".join(part for part in (machine.machine_id, serial, model, work_order, detail) if part),
+        "caption": " · ".join(part for part in (label, machine.machine_id, serial, model, work_order, detail) if part),
     }
 
 
@@ -234,6 +238,7 @@ def floor_board(start=None, end=None, on_date=None, shift=""):
 def _chip_payload(chip):
     return {
         "id": chip["id"],
+        "label": chip.get("label") or chip["id"],
         "url": reverse("machines:detail", args=[chip["id"]]),
         "tone": chip["tone"],
         "rework": chip["rework"],

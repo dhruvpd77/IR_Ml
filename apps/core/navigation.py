@@ -25,18 +25,25 @@ def _visible(user, item):
 
 
 NAV_ITEMS = [
-    {"label": "Dashboard", "url": "core:dashboard", "icon": "layout-dashboard", "highlight": ["dashboard"], "hide_management": True},
-    {"label": "Monthly dashboard", "url": "core:monthly", "icon": "layout-dashboard", "management": True, "roles": {Roles.GENERAL_USER}, "highlight": ["monthly"]},
-    {"label": "Daily dashboard", "url": "core:daily", "icon": "calendar-days", "management": True, "roles": {Roles.GENERAL_USER}, "highlight": ["daily"]},
-    {"label": "Tentative planning", "url": "core:tentative", "icon": "calendar-range", "super_admin": True, "highlight": ["tentative"]},
-    {"label": "Machine Analytics", "url": "core:analytics", "icon": "layout-grid", "management": True, "roles": {Roles.GENERAL_USER}, "highlight": ["analytics"]},
-    {"label": "Details Analytics", "url": "core:details_analytics", "icon": "bar-chart-2", "management": True, "roles": {Roles.GENERAL_USER}, "highlight": ["details_analytics"]},
-    {"label": "Slideshow", "url": "core:slideshow", "icon": "monitor-play", "management": True, "roles": {Roles.GENERAL_USER}, "highlight": ["slideshow"]},
-    {"label": "All Machines", "url": "machines:list", "icon": "cpu", "highlight": ["list", "detail", "edit", "create", "bulk"]},
-    {"label": "Track", "url": "machines:track", "icon": "route", "management": True, "highlight": ["track"]},
-    {"label": "Register Machine", "url": "machines:create", "icon": "plus-circle", "roles": {Roles.PLANNING_DATA_ENTRY}},
-    {"label": "Planning Excel", "url": "machines:import", "icon": "file-spreadsheet", "management": True, "highlight": ["import", "import_preview"]},
-    {"label": "Model Catalog", "url": "machines:catalog", "icon": "file-spreadsheet", "roles": {Roles.PRODUCTION_LEADER}, "highlight": ["catalog"]},
+    {"label": "Dashboard", "url": "core:dashboard", "icon": "layout-dashboard", "highlight": ["dashboard"], "hide_management": True, "section": "Overview"},
+    {"label": "Monthly dashboard", "url": "core:monthly", "icon": "layout-dashboard", "management": True, "roles": {Roles.GENERAL_USER}, "highlight": ["monthly"], "section": "Overview"},
+    {"label": "Daily dashboard", "url": "core:daily", "icon": "calendar-days", "management": True, "roles": {Roles.GENERAL_USER}, "highlight": ["daily"], "section": "Overview"},
+    {"label": "Tentative planning", "url": "core:tentative", "icon": "calendar-range", "super_admin": True, "highlight": ["tentative"], "section": "Overview"},
+    {"label": "Machine Analytics", "url": "core:analytics", "icon": "layout-grid", "management": True, "roles": {Roles.GENERAL_USER}, "highlight": ["analytics"], "section": "Overview"},
+    {"label": "Details Analytics", "url": "core:details_analytics", "icon": "bar-chart-2", "management": True, "roles": {Roles.GENERAL_USER}, "highlight": ["details_analytics"], "section": "Overview"},
+    {"label": "Slideshow", "url": "core:slideshow", "icon": "monitor-play", "management": True, "roles": {Roles.GENERAL_USER}, "highlight": ["slideshow"], "section": "Overview"},
+    {"label": "All Machines", "url": "machines:list", "icon": "cpu", "highlight": ["list", "detail", "edit", "create", "bulk"], "section": "Machines"},
+    {
+        "label": "History of Machine",
+        "url": "machines:history",
+        "icon": "history",
+        "highlight": ["history", "history_timeline", "history_jobcard"],
+        "section": "Machines",
+    },
+    {"label": "Track", "url": "machines:track", "icon": "route", "management": True, "highlight": ["track"], "section": "Machines"},
+    {"label": "Register Machine", "url": "machines:create", "icon": "plus-circle", "roles": {Roles.PLANNING_DATA_ENTRY}, "section": "Machines"},
+    {"label": "Planning Excel", "url": "machines:import", "icon": "file-spreadsheet", "management": True, "highlight": ["import", "import_preview"], "section": "Machines"},
+    {"label": "Model Catalog", "url": "machines:catalog", "icon": "file-spreadsheet", "roles": {Roles.PRODUCTION_LEADER}, "highlight": ["catalog"], "section": "Machines"},
     {
         "label": "Serial numbers",
         "url": "workflow:planner",
@@ -44,21 +51,22 @@ NAV_ITEMS = [
         "roles": {Roles.PRODUCTION_LEADER},
         "highlight": ["planner", "production", "production_machine"],
         "count": "planner",
+        "section": "Shop floor",
     },
-    {"label": "Assembly", "url": "workflow:phase", "args": ["ASSEMBLY"], "icon": "wrench", "roles": {Roles.ASSEMBLY}, "count": "ASSEMBLY"},
-    {"label": "Electrical", "url": "workflow:phase", "args": ["ELECTRICAL"], "icon": "zap", "roles": {Roles.ELECTRICAL}, "count": "ELECTRICAL"},
-    {"label": "Waiting Area", "url": "workflow:phase", "args": ["WAITING"], "icon": "hourglass", "roles": {Roles.TESTING}, "count": "WAITING"},
-    {"label": "Testing", "url": "workflow:phase", "args": ["TESTING"], "icon": "gauge", "roles": {Roles.TESTING}, "count": "TESTING"},
-    {"label": "End of Line", "url": "workflow:phase", "args": ["EOL"], "icon": "package-check", "roles": {Roles.EOL}, "count": "EOL"},
-    {"label": "Quality Control", "url": "workflow:phase", "args": ["QC"], "icon": "shield-check", "roles": {Roles.QC}, "count": "QC"},
-    {"label": "Rework", "url": "rework:list", "icon": "rotate-ccw", "highlight": ["list", "detail", "resolve"], "count": "rework"},
-    {"label": "Reports", "url": "reports:index", "icon": "bar-chart-3", "roles": {Roles.PRODUCTION_LEADER, Roles.QC}},
-    {"label": "Job Card Setup", "url": "jobcards:templates", "icon": "clipboard-list", "management": True, "highlight": ["templates", "template_edit", "template_create"]},
-    {"label": "Users", "url": "accounts:users", "icon": "users", "management": True, "highlight": ["users", "user_create", "user_edit"]},
-    {"label": "Stations", "url": "machines:stations", "icon": "map-pin", "management": True, "highlight": ["stations", "station_create", "station_edit"]},
-    {"label": "Phases", "url": "workflow:phases", "icon": "git-branch", "management": True, "highlight": ["phases", "phase_edit"]},
-    {"label": "Settings", "url": "accounts:settings", "icon": "settings", "management": True},
-    {"label": "Audit Log", "url": "audit:list", "icon": "scroll-text", "management": True},
+    {"label": "Assembly", "url": "workflow:phase", "args": ["ASSEMBLY"], "icon": "wrench", "roles": {Roles.ASSEMBLY}, "count": "ASSEMBLY", "section": "Shop floor"},
+    {"label": "Electrical", "url": "workflow:phase", "args": ["ELECTRICAL"], "icon": "zap", "roles": {Roles.ELECTRICAL}, "count": "ELECTRICAL", "section": "Shop floor"},
+    {"label": "Waiting Area", "url": "workflow:phase", "args": ["WAITING"], "icon": "hourglass", "roles": {Roles.TESTING}, "count": "WAITING", "section": "Shop floor"},
+    {"label": "Testing", "url": "workflow:phase", "args": ["TESTING"], "icon": "gauge", "roles": {Roles.TESTING}, "count": "TESTING", "section": "Shop floor"},
+    {"label": "End of Line", "url": "workflow:phase", "args": ["EOL"], "icon": "package-check", "roles": {Roles.EOL}, "count": "EOL", "section": "Shop floor"},
+    {"label": "Quality Control", "url": "workflow:phase", "args": ["QC"], "icon": "shield-check", "roles": {Roles.QC}, "count": "QC", "section": "Shop floor"},
+    {"label": "Rework", "url": "rework:list", "icon": "rotate-ccw", "highlight": ["list", "detail", "resolve"], "count": "rework", "section": "Shop floor"},
+    {"label": "Reports", "url": "reports:index", "icon": "bar-chart-3", "roles": {Roles.PRODUCTION_LEADER, Roles.QC}, "section": "Shop floor"},
+    {"label": "Job Card Setup", "url": "jobcards:templates", "icon": "clipboard-list", "management": True, "highlight": ["templates", "template_edit", "template_create"], "section": "Admin"},
+    {"label": "Users", "url": "accounts:users", "icon": "users", "management": True, "highlight": ["users", "user_create", "user_edit"], "section": "Admin"},
+    {"label": "Stations", "url": "machines:stations", "icon": "map-pin", "management": True, "highlight": ["stations", "station_create", "station_edit"], "section": "Admin"},
+    {"label": "Phases", "url": "workflow:phases", "icon": "git-branch", "management": True, "highlight": ["phases", "phase_edit"], "section": "Admin"},
+    {"label": "Settings", "url": "accounts:settings", "icon": "settings", "management": True, "section": "Admin"},
+    {"label": "Audit Log", "url": "audit:list", "icon": "scroll-text", "management": True, "section": "Admin"},
 ]
 
 
@@ -141,9 +149,15 @@ def navigation_for(user, match):
                 "icon": item["icon"],
                 "active": active,
                 "count": count,
+                "section": item.get("section") or "Menu",
             }
         )
-    return items
+    sections = []
+    for entry in items:
+        if not sections or sections[-1]["label"] != entry["section"]:
+            sections.append({"label": entry["section"], "items": []})
+        sections[-1]["items"].append(entry)
+    return {"items": items, "sections": sections}
 
 
 def home_phase(user):

@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% load mqms %}
+{% block title %}Timeline · {{ machine.machine_id }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="crumbs">
+      <a href="{% url 'machines:history' %}">History of Machine</a> / {{ machine.machine_id }}
+    </p>
+    <p class="eyebrow">{{ pipeline }}</p>
+    <h1>{{ machine.machine_id }} timeline</h1>
+    <p class="muted">
+      {{ machine.planning.model_description }} · CCN {{ machine.planning.ccn|default:"—" }} · WO {{ machine.planning.work_order|default:"—" }}
+    </p>
+  </div>
+  <div class="btn-row">
+    <a class="btn-ghost" href="{% url 'machines:history_jobcard' machine.machine_id %}">Job card</a>
+    <a class="btn-primary" href="{% url 'machines:detail' machine.machine_id %}">Open machine</a>
+  </div>
+</div>
+
+<section class="mh-journey-head card">
+  <div>
+    <strong>{{ done_count }} / {{ total_count }} phases done</strong>
+    <p class="muted">Live progress {{ progress }}%</p>
+  </div>
+  <div class="progress"><span style="width: {{ progress }}%"></span></div>
+  <dl class="mh-meta">
+    <div><dt>Company</dt><dd>{{ machine.planning.company|default:"—" }}</dd></div>
+    <div><dt>Type</dt><dd>{{ machine.planning.machine_type|default:"—" }}</dd></div>
+    <div><dt>Serial</dt><dd>{{ machine.planner_serial|default:machine.production_serial|default:"—" }}</dd></div>
+    <div><dt>Status</dt><dd><span class="{{ machine.status|badge_class }}">{{ machine.status_label }}</span></dd></div>
+  </dl>
+</section>
+
+<ol class="mh-journey">
+  {% for step in journey %}
+    <li class="mh-step status-{{ step.status }}{% if step.is_current %} is-current{% endif %}" style="--tone: {{ step.color }}; --delay: {{ forloop.counter0 }}">
+      <div class="mh-rail" aria-hidden="true">
+        <span class="mh-dot"></span>
+        {% if not forloop.last %}<span class="mh-line"></span>{% endif %}
+      </div>
+      <article class="mh-step-card">
+        <header>
+          <div>
+            <p class="mh-step-kicker">Phase {{ forloop.counter }}</p>
+            <h2>{{ step.name }}</h2>
+          </div>
+          <span class="mh-step-status">{{ step.status_label }}</span>
+        </header>
+        <dl class="mh-step-grid">
+          <div><dt>Started by</dt><dd>{{ step.started_by_name }}</dd></div>
+          <div><dt>Started at</dt><dd>{% if step.started_at %}{{ step.started_at|date:"d M Y, H:i" }}{% else %}—{% endif %}</dd></div>
+          <div><dt>Completed by</dt><dd>{{ step.completed_by_name }}</dd></div>
+          <div><dt>Completed at</dt><dd>{% if step.completed_at %}{{ step.completed_at|date:"d M Y, H:i" }}{% else %}—{% endif %}</dd></div>
+          <div><dt>Duration</dt><dd>{{ step.duration }}</dd></div>
+          <div><dt>Handled by</dt><dd>{{ step.actor_name }}</dd></div>
+          {% if step.cycle and step.cycle > 1 %}
+            <div><dt>Cycle</dt><dd>{{ step.cycle }}</dd></div>
+          {% endif %}
+          {% if step.rework_open %}
+            <div><dt>Rework</dt><dd>Open</dd></div>
+          {% endif %}
+          {% if step.detail %}
+            <div class="wide"><dt>Work order</dt><dd>{{ step.detail }}</dd></div>
+          {% endif %}
+        </dl>
+      </article>
+    </li>
+  {% endfor %}
+</ol>
+
+<section class="card" style="margin-top:18px">
+  <h3>Event log</h3>
+  <ul class="timeline">
+    {% for event in events %}
+      <li>
+        <span class="dot"></span>
+        <div>
+          <strong>{{ event|event_title }}</strong>
+          <p class="muted">{{ event.created_at|date:"d M Y, H:i" }} · {{ event.actor.display_name|default:"System" }}</p>
+          {% if event.remarks %}<p class="event-remark">{{ event.remarks }}</p>{% endif %}
+        </div>
+      </li>
+    {% empty %}
+      <li><span class="dot"></span><div><p class="muted">No events recorded yet.</p></div></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

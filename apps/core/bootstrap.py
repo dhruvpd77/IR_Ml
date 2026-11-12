@@ -49,6 +49,8 @@ SETTINGS = [
         "Submitted job cards are retained permanently. Corrections create a new revision and never overwrite history.",
         "Retention note",
     ),
+    ("completion_email_enabled", "yes", "Send email when QC completes"),
+    ("completion_email_to", "", "Completion email recipients"),
 ]
 
 

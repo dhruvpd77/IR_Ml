@@ -38,6 +38,20 @@ def clean_text(value):
     return str(value or "").strip()
 
 
+def _resolve_machine_name(data):
+    from machines.catalog import catalog_machine_name
+
+    explicit = clean_text(data.get("machine_name"))
+    if explicit:
+        return explicit[:160]
+    return catalog_machine_name(
+        clean_text(data.get("company")) or "Ingersoll Rand",
+        clean_text(data.get("machine_type")),
+        clean_text(data.get("model_description")),
+        clean_text(data.get("ccn")),
+    )[:160]
+
+
 def register_machine(data, user, submit=False, raw=None):
     from workflow.engine import initialize_machine, submit_planning
 
@@ -56,6 +70,7 @@ def register_machine(data, user, submit=False, raw=None):
             work_order=clean_text(data.get("work_order")),
             ccn=clean_text(data.get("ccn")),
             model_description=clean_text(data.get("model_description")),
+            machine_name=_resolve_machine_name(data),
             machine_type=clean_text(data.get("machine_type")),
             calibration=clean_text(data.get("calibration")),
             shift=clean_text(data.get("shift")),
@@ -95,6 +110,15 @@ def update_planning(machine, data, user):
         setattr(planning, field, value)
     if "customer_inspection_date" in data:
         planning.customer_inspection_date = data.get("customer_inspection_date") or None
+    planning.machine_name = _resolve_machine_name(
+        {
+            "machine_name": data.get("machine_name", planning.machine_name),
+            "company": planning.company,
+            "machine_type": planning.machine_type,
+            "model_description": planning.model_description,
+            "ccn": planning.ccn,
+        }
+    )
     planning.save()
     priority = normalize_priority(data.get("priority")) if "priority" in data else None
     if priority:
@@ -131,6 +155,21 @@ def apply_machine_filters(queryset, params):
         queryset = queryset.filter(priority=params.get("priority"))
     if params.get("station"):
         queryset = queryset.filter(station_id=params.get("station"))
+    if params.get("company"):
+        queryset = queryset.filter(planning__company__icontains=params.get("company"))
+    if params.get("machine_type"):
+        queryset = queryset.filter(planning__machine_type__icontains=params.get("machine_type"))
+    if params.get("work_order"):
+        queryset = queryset.filter(planning__work_order__icontains=params.get("work_order"))
+    if params.get("ccn"):
+        queryset = queryset.filter(planning__ccn__icontains=params.get("ccn"))
+    if params.get("model"):
+        queryset = queryset.filter(planning__model_description__icontains=params.get("model"))
+    if params.get("serial"):
+        serial = params.get("serial")
+        queryset = queryset.filter(
+            Q(planner_serial__icontains=serial) | Q(production_serial__icontains=serial)
+        )
     if params.get("phase"):
         phase = params.get("phase")
         queryset = queryset.filter(

@@ -25,7 +25,7 @@ from workflow.engine import WorkflowError, pass_phase, reachable_rework_targets,
 from workflow.models import WorkflowEvent
 from accounts.models import current_logo
 from core.stats import CARD_META, STAGE_LABELS, limit_for_card
-from workflow.presenters import event_label, job_card_view, pipeline_label, recent_events, tracking_steps
+from workflow.presenters import event_label, history_journey, job_card_view, pipeline_label, recent_events, tracking_steps
 
 
 def _machine_or_404(user, machine_id):
@@ -120,6 +120,18 @@ def machine_track(request):
     )
 
 
+HISTORY_PHASES = [
+    ("PLANNING", "Planning"),
+    ("PLANNER", "Serial"),
+    ("PRODUCTION", "Production"),
+    ("BUILD", "Assembly + Electrical"),
+    ("WAITING", "Waiting"),
+    ("TESTING", "Testing"),
+    ("EOL", "EOL"),
+    ("QC", "QC"),
+]
+
+
 @login_required
 def machine_list(request):
     queryset = visible_machines(request.user).prefetch_related("phase_states__phase")
@@ -138,16 +150,90 @@ def machine_list(request):
             "statuses": MachineStatus.CHOICES,
             "priorities": Priority.CHOICES,
             "station_groups": stations_by_line(),
-            "phases": [
-                ("PLANNING", "Planning"),
-                ("PLANNER", "Serial"),
-                ("PRODUCTION", "Production"),
-                ("BUILD", "Assembly + Electrical"),
-                ("TESTING", "Testing"),
-                ("EOL", "EOL"),
-                ("QC", "QC"),
-            ],
+            "phases": HISTORY_PHASES,
             "filters": request.GET,
+        },
+    )
+
+
+@login_required
+def machine_history(request):
+    queryset = visible_machines(request.user).select_related(
+        "planning", "station", "created_by", "qc_approved_by"
+    ).prefetch_related("phase_states__phase")
+    queryset = apply_sort(apply_machine_filters(queryset, request.GET), request.GET)
+    page = paginate(request, queryset, size=25)
+    for machine in page.object_list:
+        machine.pipeline = pipeline_label(machine)
+    type_choices = (
+        visible_machines(request.user)
+        .exclude(planning__machine_type="")
+        .values_list("planning__machine_type", flat=True)
+        .distinct()
+        .order_by("planning__machine_type")
+    )
+    company_choices = (
+        visible_machines(request.user)
+        .exclude(planning__company="")
+        .values_list("planning__company", flat=True)
+        .distinct()
+        .order_by("planning__company")
+    )
+    return render(
+        request,
+        "machines/history.html",
+        {
+            "page": page,
+            "querystring": querystring(request),
+            "statuses": MachineStatus.CHOICES,
+            "priorities": Priority.CHOICES,
+            "station_groups": stations_by_line(),
+            "phases": HISTORY_PHASES,
+            "type_choices": type_choices,
+            "company_choices": company_choices,
+            "filters": request.GET,
+        },
+    )
+
+
+@login_required
+def machine_history_timeline(request, machine_id):
+    machine = _machine_or_404(request.user, machine_id)
+    journey = history_journey(machine)
+    done = sum(1 for step in journey if step["status"] == PhaseStatus.COMPLETED)
+    return render(
+        request,
+        "machines/history_timeline.html",
+        {
+            "machine": machine,
+            "pipeline": pipeline_label(machine),
+            "journey": journey,
+            "progress": machine.progress_percent(),
+            "done_count": done,
+            "total_count": len(journey),
+            "events": recent_events(machine, limit=40),
+        },
+    )
+
+
+@login_required
+def machine_history_jobcard(request, machine_id):
+    machine = _machine_or_404(request.user, machine_id)
+    submissions = machine.job_card_submissions.select_related("operator", "template").prefetch_related(
+        "responses__field", "attachments"
+    )
+    reworks = machine.reworks.select_related("assigned_phase", "rejected_phase", "rejected_by").prefetch_related("actions")
+    _with_track(request.user, machine)
+    return render(
+        request,
+        "machines/history_jobcard.html",
+        {
+            "machine": machine,
+            "pipeline": pipeline_label(machine),
+            "logo": current_logo(),
+            "brand_logo": static(brand_static(machine.planning.company)),
+            "card": job_card_view(machine, submissions, machine.track_steps, reworks),
+            "progress": machine.progress_percent(),
         },
     )
 
@@ -434,6 +520,7 @@ def catalog_upload(request):
     if query:
         items = items.filter(
             Q(model_description__icontains=query)
+            | Q(machine_name__icontains=query)
             | Q(ccn__icontains=query)
             | Q(company__icontains=query)
             | Q(machine_type__icontains=query)

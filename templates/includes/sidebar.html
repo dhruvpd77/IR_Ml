@@ -1,21 +1,48 @@
+{% load static %}
 <aside class="sidebar">
   <div class="brand">
-    <div class="brand-mark">IR</div>
-    <div>
+    <div class="brand-logo">
+      <img src="{% static 'img/ir-logo.jpg' %}" alt="Ingersoll Rand">
+    </div>
+    <div class="brand-copy">
       <small>Ingersoll Rand</small>
       <strong>Production ROTARY</strong>
+      <span>Shop-floor traceability</span>
     </div>
   </div>
-  <nav class="nav-scroll">
-    {% for item in nav_items %}
-      <a class="nav-link{% if item.active %} active{% endif %}" href="{{ item.href }}">
-        <i data-lucide="{{ item.icon }}"></i>
-        <span>{{ item.label }}</span>
-        {% if item.count %}
-          <span class="nav-count" aria-label="{{ item.count }} open">{{ item.count }}</span>
-        {% endif %}
-      </a>
+
+  <nav class="nav-scroll" aria-label="Main">
+    {% for section in nav_sections %}
+      <div class="nav-section">
+        <p class="nav-section-label">{{ section.label }}</p>
+        {% for item in section.items %}
+          <a class="nav-link{% if item.active %} active{% endif %}" href="{{ item.href }}">
+            <span class="nav-icon"><i data-lucide="{{ item.icon }}"></i></span>
+            <span class="nav-label">{{ item.label }}</span>
+            {% if item.count %}
+              <span class="nav-count" aria-label="{{ item.count }} open">{{ item.count }}</span>
+            {% endif %}
+          </a>
+        {% endfor %}
+      </div>
+    {% empty %}
+      {% for item in nav_items %}
+        <a class="nav-link{% if item.active %} active{% endif %}" href="{{ item.href }}">
+          <span class="nav-icon"><i data-lucide="{{ item.icon }}"></i></span>
+          <span class="nav-label">{{ item.label }}</span>
+          {% if item.count %}
+            <span class="nav-count" aria-label="{{ item.count }} open">{{ item.count }}</span>
+          {% endif %}
+        </a>
+      {% endfor %}
     {% endfor %}
   </nav>
-  <div class="sidebar-foot">One machine · one record · full traceability</div>
+
+  <div class="sidebar-foot">
+    <div class="sidebar-foot-mark">IR</div>
+    <div>
+      <strong>One machine · one record</strong>
+      <span>Full phase history on every login</span>
+    </div>
+  </div>
 </aside>

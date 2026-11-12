@@ -4,5 +4,5 @@
       <i class="live-dot" style="--c: {{ dot.color }}" title="{{ dot.label }}"></i>
     {% endfor %}
   </span>
-  <span class="pill-id">{{ machine.id }}</span>
+  <span class="pill-id">{{ machine.label|default:machine.id }}</span>
 </a>

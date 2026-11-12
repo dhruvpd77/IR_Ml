@@ -105,6 +105,10 @@ def _header_map(header):
             columns.setdefault("type", index)
         if key in {"ccn", "package ccn"}:
             columns.setdefault("ccn", index)
+        if key in {"machine name", "machinename", "machine_name", "name"} or (
+            "machine" in key and "name" in key
+        ):
+            columns.setdefault("machine name", index)
         if "job card" in key and "word" not in key and "excel" not in key:
             columns.setdefault("job card detail", index)
         if key in {"word/excel", "word excel", "format", "job card format", "source"}:
@@ -175,6 +179,33 @@ def job_card_format_for_machine(machine):
     return normalize_job_card_format(item.job_card_format)
 
 
+def catalog_machine_name(company, machine_type, model_description, ccn=""):
+    item = find_model(company, machine_type, model_description)
+    if item is None and ccn:
+        item = find_by_ccn(ccn)
+    if item is None:
+        return ""
+    return _cell(item.machine_name)
+
+
+def display_name_for_machine(machine):
+    """Floor/layout label: catalog machine name, else IR-MCH id."""
+    planning = getattr(machine, "planning", None)
+    if planning is not None:
+        stored = _cell(getattr(planning, "machine_name", ""))
+        if stored:
+            return stored
+        looked_up = catalog_machine_name(
+            planning.company,
+            planning.machine_type,
+            planning.model_description,
+            planning.ccn,
+        )
+        if looked_up:
+            return looked_up
+    return machine.machine_id
+
+
 def extra_companies():
     return list(PlanningCatalogItem.objects.order_by("company").values_list("company", flat=True).distinct())
 
@@ -218,6 +249,9 @@ def replace_catalog(upload, user):
         job_card_format = ""
         if "word/excel" in columns:
             job_card_format = normalize_job_card_format(value("word/excel"))
+        machine_name = ""
+        if "machine name" in columns:
+            machine_name = _cell(value("machine name"))
         if not company or not machine_type or not model or not ccn:
             if any((company, machine_type, model, ccn)):
                 skipped += 1
@@ -233,6 +267,7 @@ def replace_catalog(upload, user):
                 machine_type=machine_type[:120],
                 model_description=model[:240],
                 ccn=ccn[:80],
+                machine_name=machine_name[:160],
                 job_card_key=job_card_key[:160],
                 job_card_format=job_card_format[:16],
                 uploaded_by=user if getattr(user, "is_authenticated", False) else None,
@@ -244,4 +279,31 @@ def replace_catalog(upload, user):
     with transaction.atomic():
         PlanningCatalogItem.objects.all().delete()
         PlanningCatalogItem.objects.bulk_create(items)
+        _sync_planning_machine_names(items)
     return {"created": len(items), "skipped": skipped}
+
+
+def _sync_planning_machine_names(items):
+    """Refresh machine_name on existing planning rows from the newly uploaded catalog."""
+    from machines.models import MachinePlanningData
+
+    by_model = {
+        (item.company.lower(), item.machine_type.lower(), item.model_description.lower()): item.machine_name
+        for item in items
+        if item.machine_name
+    }
+    by_ccn = {item.ccn: item.machine_name for item in items if item.ccn and item.machine_name}
+    if not by_model and not by_ccn:
+        return
+    updates = []
+    for planning in MachinePlanningData.objects.all().only(
+        "pk", "company", "machine_type", "model_description", "ccn", "machine_name"
+    ):
+        name = by_model.get((planning.company.lower(), planning.machine_type.lower(), planning.model_description.lower()))
+        if not name and planning.ccn:
+            name = by_ccn.get(planning.ccn)
+        if name and planning.machine_name != name:
+            planning.machine_name = name[:160]
+            updates.append(planning)
+    if updates:
+        MachinePlanningData.objects.bulk_update(updates, ["machine_name"], batch_size=200)
