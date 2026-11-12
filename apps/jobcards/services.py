@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
@@ -841,10 +842,44 @@ def ensure_phase_draft(machine, user, phase_code, cycle):
         .order_by("-pk")
         .first()
     )
+    try:
+        target_template = active_template(phase_code, machine)
+    except JobCardError:
+        target_template = None
+
     if draft is not None:
         # Empty draft left from an older mismatch — rebuild from the prior card.
         if not draft.responses.exists():
             draft.delete()
+        elif target_template is not None and draft.template_id != target_template.id:
+            # Word/Excel re-import created a newer checklist — move the open draft onto it.
+            old_by_key = {response.field.field_key: response for response in draft.responses.select_related("field")}
+            old_by_label = {
+                (response.field.label or "").strip().casefold(): response
+                for response in draft.responses.select_related("field")
+                if (response.field.label or "").strip()
+            }
+            with transaction.atomic():
+                draft.template = target_template
+                draft.save(update_fields=["template", "updated_at"])
+                draft.responses.all().delete()
+                for field in target_template.active_fields():
+                    source = old_by_key.get(field.field_key) or old_by_label.get(
+                        (field.label or "").strip().casefold()
+                    )
+                    if source is None:
+                        continue
+                    JobCardResponse.objects.create(
+                        submission=draft,
+                        field=field,
+                        value_text=source.value_text,
+                        value_bool=source.value_bool,
+                        value_decimal=source.value_decimal,
+                        value_date=source.value_date,
+                        value_time=source.value_time,
+                        value_json=source.value_json,
+                    )
+            return draft, False
         else:
             return draft, False
 
@@ -852,9 +887,7 @@ def ensure_phase_draft(machine, user, phase_code, cycle):
     if prior is None:
         return None, False
 
-    try:
-        target_template = active_template(phase_code, machine)
-    except JobCardError:
+    if target_template is None:
         target_template = prior.template
 
     prior_by_key = {}
@@ -994,6 +1027,37 @@ def revise_submission(submission, user, answers, files, reason):
         return revised
 
 
+def _pressure_matrix_from_fields(fields):
+    """Build Belt/Pulley × Bar CCN grid from imported Word pressure fields."""
+    bars = []
+    rows = {}
+    leader = None
+    for field in fields:
+        help_text = field.help_text or ""
+        if help_text.startswith("press|leader|") or re.search(r"checked\s+by|team\s+leader", field.label, re.I):
+            leader = field
+            continue
+        row_name = None
+        bar_name = None
+        if help_text.startswith("press|"):
+            parts = help_text.split("|")
+            if len(parts) >= 3:
+                row_name, bar_name = parts[1], parts[2]
+        if not row_name or not bar_name:
+            match = re.match(r"^(.*?)\s*[—\-]\s*(.+?)\s*\(CCN\)\s*$", field.label)
+            if match:
+                row_name, bar_name = match.group(1).strip(), match.group(2).strip()
+        if not row_name or not bar_name:
+            continue
+        if bar_name not in bars:
+            bars.append(bar_name)
+        rows.setdefault(row_name, {})[bar_name] = field
+    if not rows:
+        return None
+    matrix_rows = [{"name": name, "cells": [cells.get(bar) for bar in bars]} for name, cells in rows.items()]
+    return {"bars": bars, "rows": matrix_rows, "leader": leader}
+
+
 def group_fields(fields):
     groups = []
     index = {}
@@ -1003,4 +1067,22 @@ def group_fields(fields):
             index[section] = {"name": section, "fields": []}
             groups.append(index[section])
         index[section]["fields"].append(field)
+    for group in groups:
+        name = group["name"]
+        if name == "Fill as per pressure rating":
+            matrix = _pressure_matrix_from_fields(group["fields"])
+            if matrix:
+                group["pressure_matrix"] = matrix
+        elif name == "Belt tension reference":
+            notes = []
+            inputs = []
+            for field in group["fields"]:
+                help_text = field.help_text or ""
+                if help_text.startswith("belt_chart|") or "chart" in field.field_key:
+                    notes.append(field)
+                else:
+                    inputs.append(field)
+            if notes:
+                group["belt_notes"] = notes
+                group["fields"] = inputs
     return groups

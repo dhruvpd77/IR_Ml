@@ -25,10 +25,15 @@ DURING_HEADER = re.compile(r"ટેસ્ટિંગ\s+દરમિયાન|du
 AFTER_HEADER = re.compile(r"ટેસ્ટિંગ\s+પછી|after\s+testing", re.I)
 SIGN_DATE = re.compile(r"sign\s*/?\s*date|name\s*/?\s*sign", re.I)
 SKIP_TABLE = re.compile(
-    r"revision\s+history|problem\s+description|random\s*/?\s*spot|belt\s+tension\s+data|"
-    r"model\s*#|model\s*№|pack(?:age|ge)?\s*ccn|work\s+order",
+    r"revision\s+level|brief\s+description\s+of\s+changes|"
+    r"model\s*#|model\s*№|pack(?:age|ge)?\s*ccn|stock\s*dt",
     re.I,
 )
+PRESSURE_FILL = re.compile(r"pressure\s+rating|fill\s+the\s+below\s+table|pulley\s*ccn|as\s+per\s+pressure", re.I)
+BELT_TENSION = re.compile(r"belt\s+tension|frequency\s+in\s+hz|press?ure\s*\(\s*bar\s*\)", re.I)
+SPOT_AUDIT = re.compile(r"random\s*/?\s*spot\s+audit", re.I)
+PROBLEM_LOG = re.compile(r"problem\s+description", re.I)
+BAR_COL = re.compile(r"(\d+(?:\.\d+)?)\s*bar", re.I)
 VALUE_BLANK = re.compile(r"_{3,}|\bvalues?\b|લખો|લખવું|reading|hz\b|ltr|liter", re.I)
 FILL_LINE = re.compile(r"_{3,}|:{0,1}\s*$")
 
@@ -180,26 +185,175 @@ def _is_parts_table(table) -> bool:
     if len(table.rows) < 2:
         return False
     heading = _table_heading(table)
+    if PROBLEM_LOG.search(heading) or re.search(r"revision\s+level", heading, re.I):
+        return False
     if PARTS_HEADER.search(heading):
         return True
     # Some English cards use a plain "Description / Part No / Sr. No" header row.
     probe = " | ".join(_unique_cells(table.rows[0]) + _unique_cells(table.rows[1])).lower()
+    if "revision" in probe or "brief description of changes" in probe:
+        return False
     has_description = "description" in probe
-    has_part = "part" in probe or "ccn" in probe
-    has_sr = "sr" in probe or "#" in probe
-    return has_description and (has_part or has_sr)
+    has_part = "part no" in probe or "part no." in probe or "part number" in probe or "part/ccn" in probe
+    has_ccn = "ccn" in probe and "package" not in probe
+    has_sr = "sr" in probe or probe.strip().startswith("#")
+    return has_description and (has_part or (has_ccn and has_sr))
 
 
 def _is_skip_table(heading: str) -> bool:
     if BEFORE_HEADER.search(heading) or DURING_HEADER.search(heading) or AFTER_HEADER.search(heading):
         return False
-    if AUDIT_HEADER.search(heading):
+    if AUDIT_HEADER.search(heading) or SPOT_AUDIT.search(heading):
+        return False
+    if PRESSURE_FILL.search(heading) or BELT_TENSION.search(heading):
         return False
     if SIGN_DATE.search(heading):
         return False
     if PARTS_HEADER.search(heading):
         return False
+    if PROBLEM_LOG.search(heading):
+        return True
     return bool(SKIP_TABLE.search(heading))
+
+
+def _matrix_bar_columns(table) -> list[str]:
+    """Return unique BAR labels found in header rows (7 Bar, 10 Bar, 13 Bar…)."""
+    found = []
+    for row in table.rows[:3]:
+        for cell in _unique_cells(row):
+            match = BAR_COL.search(cell)
+            if not match:
+                continue
+            label = f"{match.group(1)} Bar"
+            if label not in found:
+                found.append(label)
+    return found
+
+
+def _field_tuple(key, section, label, field_type="short_text", required=False, unit="", extra=""):
+    return (key, section, label, field_type, required, unit, extra)
+
+
+def _has_section(fields, section: str) -> bool:
+    return any(item[1] == section for item in fields)
+
+
+def _add_pressure_rating_fields(
+    assembly_fields,
+    used,
+    bars: list[str] | None = None,
+    rows: list[str] | None = None,
+):
+    """Fillable CCN table: Belt / pulleys by pressure — matches shop Word job cards."""
+    if _has_section(assembly_fields, "Fill as per pressure rating"):
+        return
+    bars = bars or ["7 Bar", "10 Bar", "13 Bar"]
+    rows = rows or [
+        "Belt",
+        "Air end side Pulley",
+        "Motor side Pulley",
+    ]
+    section = "Fill as per pressure rating"
+    for row in rows:
+        if re.search(r"checked\s+by|team\s+leader", row, re.I):
+            continue
+        for bar in bars:
+            key = _field_key("press", f"{row}_{bar}", used)
+            assembly_fields.append(
+                _field_tuple(key, section, f"{row} — {bar} (CCN)", required=False, extra=f"press|{row}|{bar}")
+            )
+    assembly_fields.append(
+        _field_tuple(
+            _field_key("press", "checked_by_team_leader", used),
+            section,
+            "Checked by Team Leader",
+            required=True,
+            extra="press|leader|",
+        )
+    )
+
+
+def _belt_reference_text(table) -> str:
+    """Human-readable belt-tension chart copied from the Word table."""
+    lines = []
+    for row in table.rows:
+        cells = _unique_cells(row)
+        if not cells:
+            continue
+        if BELT_TENSION.search(cells[0]) and len(cells) <= 2:
+            lines.append(cells[0])
+            continue
+        lines.append(" · ".join(cells))
+    return "\n".join(lines)
+
+
+def _parse_belt_tension_table(table, assembly_fields, used):
+    """Keep belt-tension reference visible and capture actual Hz reading."""
+    section = "Belt tension reference"
+    bars = _matrix_bar_columns(table)
+    chart = re.sub(r"\s+", " ", _belt_reference_text(table)).strip()
+    assembly_fields.append(
+        _field_tuple(
+            _field_key("belt", "chart_note", used),
+            section,
+            "Belt tension chart (from Word job card)",
+            field_type="short_text",
+            required=False,
+            extra=f"belt_chart|{chart}",
+        )
+    )
+    assembly_fields.append(
+        _field_tuple(
+            _field_key("belt", "actual_belt_tension_hz", used),
+            section,
+            "Actual belt tension value written on card",
+            required=False,
+            unit="Hz",
+        )
+    )
+    return bars
+
+
+def _parse_pressure_fill_table(table, assembly_fields, used):
+    section = "Fill as per pressure rating"
+    if _has_section(assembly_fields, section):
+        return
+    bars = _matrix_bar_columns(table) or ["7 Bar", "10 Bar", "13 Bar"]
+    row_labels = []
+    for row in table.rows[1:]:
+        cells = _unique_cells(row)
+        if not cells:
+            continue
+        label = cells[0].strip()
+        if not label or BAR_COL.search(label) or label.lower() in {"ccn", "description"}:
+            continue
+        if PRESSURE_FILL.search(label):
+            continue
+        row_labels.append(label)
+    if not row_labels:
+        _add_pressure_rating_fields(assembly_fields, used, bars)
+        return
+    fill_rows = [label for label in row_labels if not re.search(r"checked\s+by|team\s+leader", label, re.I)]
+    _add_pressure_rating_fields(assembly_fields, used, bars, fill_rows or None)
+
+
+def _parse_spot_audit_table(table, testing_fields, used):
+    section = "Spot audit"
+    for index, row in enumerate(table.rows):
+        cells = _unique_cells(row)
+        if not cells:
+            continue
+        joined = " | ".join(cells)
+        if index == 0 or SPOT_AUDIT.search(joined):
+            continue
+        if "type of check" in joined.lower() and "checked by" in joined.lower():
+            continue
+        label = cells[0].strip()
+        if not label:
+            continue
+        testing_fields.append(
+            _as_yes_no_or_text("spot", str(index), section, label, used)
+        )
 
 
 def _checklist_label(cells: list[str]) -> str:
@@ -231,11 +385,28 @@ def parse_word_document(docx_path: Path, checklist_key: str):
     asm_number = 0
     aud_number = 0
     test_number = 0
+    pressure_bars = None
 
     for table in document.tables:
         heading = _table_heading(table)
         if not heading:
             continue
+        joined_probe = " | ".join(
+            cell for row in table.rows[:3] for cell in _unique_cells(row)
+        )
+
+        if _is_skip_table(heading) and not (
+            PRESSURE_FILL.search(heading)
+            or BELT_TENSION.search(heading)
+            or SPOT_AUDIT.search(heading)
+            or AUDIT_HEADER.search(heading)
+            or BEFORE_HEADER.search(heading)
+            or DURING_HEADER.search(heading)
+            or AFTER_HEADER.search(heading)
+            or PARTS_HEADER.search(heading)
+        ):
+            continue
+
         if _is_parts_table(table):
             for row in table.rows:
                 cells = _unique_cells(row)
@@ -256,6 +427,20 @@ def parse_word_document(docx_path: Path, checklist_key: str):
                 description = description.strip()
                 if description:
                     assembly_fields.append(_short("part", description, "Assembly parts", used))
+            continue
+
+        if PRESSURE_FILL.search(heading) or PRESSURE_FILL.search(joined_probe):
+            _parse_pressure_fill_table(table, assembly_fields, used)
+            continue
+
+        if BELT_TENSION.search(heading) or BELT_TENSION.search(joined_probe):
+            bars = _parse_belt_tension_table(table, assembly_fields, used)
+            if bars:
+                pressure_bars = bars
+            continue
+
+        if SPOT_AUDIT.search(heading):
+            _parse_spot_audit_table(table, testing_fields, used)
             continue
 
         if _is_skip_table(heading):
@@ -305,11 +490,20 @@ def parse_word_document(docx_path: Path, checklist_key: str):
             or "separator" in heading_l
             or "cooling" in heading_l
         ):
-            section_title = heading.split("|")[0].strip()
-            if len(section_title) > 80:
-                section_title = "Assembly checklist"
-            else:
-                section_title = section_title or "Assembly checklist"
+            section_title = heading.split("|")[0].strip() or "Assembly checklist"
+            # Keep section names distinct so later Word blocks do not merge into earlier ones.
+            if len(section_title) > 72:
+                lowered = section_title.casefold()
+                if "starter" in lowered or "સ્ટાર્ટર" in section_title or "કંટ્રોલ" in section_title:
+                    section_title = "Starter / control panel assembly"
+                elif "cooler" in lowered or "કુલર" in section_title or "કેનોપી" in section_title or "canopy" in lowered:
+                    section_title = "Cooler / sep tank / canopy assembly"
+                elif "મોટર" in section_title or "motor" in lowered:
+                    section_title = "Motor and air-end assembly"
+                elif "એર એન્ડ" in section_title or "air end" in lowered:
+                    section_title = "Air end assembly"
+                else:
+                    section_title = section_title[:72].rstrip(" /-,")
             for index, row in enumerate(table.rows):
                 cells = _unique_cells(row)
                 if not cells:
@@ -340,6 +534,25 @@ def parse_word_document(docx_path: Path, checklist_key: str):
                     _as_yes_no_or_text("asm", str(asm_number), section_title, label, used)
                 )
             continue
+
+    # Shop cards show the pressure CCN matrix after major parts; inject when Word omits it.
+    if not _has_section(assembly_fields, "Fill as per pressure rating"):
+        insert_at = 0
+        seen_parts = False
+        for index, field in enumerate(assembly_fields):
+            if field[1] == "Assembly parts":
+                seen_parts = True
+                insert_at = index + 1
+            elif seen_parts:
+                break
+        injected = []
+        # Prefer bars seen on the Word belt chart; keep 13 Bar for the shop fill table.
+        bars = list(pressure_bars or [])
+        for bar in ("7 Bar", "10 Bar", "13 Bar"):
+            if bar not in bars:
+                bars.append(bar)
+        _add_pressure_rating_fields(injected, used, bars)
+        assembly_fields[insert_at:insert_at] = injected
 
     # Standard sign-off / result fields (same pattern as Excel imports).
     assembly_fields.append(_short("sign", "Assembled by", "Assembly sign off", used))

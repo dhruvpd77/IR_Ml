@@ -43,9 +43,40 @@
     </label>
   {% endif %}
   {% for group in groups %}
-    <section class="sheet-section {% if group.name == 'If not OK' %}not-ok-section{% endif %}" {% if group.name == "If not OK" %}data-not-ok hidden{% endif %}>
+    <section class="sheet-section tone-section {% if group.name == 'If not OK' %}not-ok-section{% elif group.name == 'Fill as per pressure rating' %}tone-pressure{% elif group.name == 'Belt tension reference' %}tone-belt{% elif group.name == 'Assembly parts' %}tone-parts{% elif group.name == 'Final audit' or group.name == 'Spot audit' %}tone-audit{% endif %}" {% if group.name == "If not OK" %}data-not-ok hidden{% endif %}>
       <h2>{{ group.name }}</h2>
-      {% if group.name == "Assembly parts" or group.name == "General check" %}
+      {% if group.pressure_matrix %}
+        <p class="section-note">Fill the table as per pressure rating of machine (CCN).</p>
+        <div class="pressure-table">
+          <div class="pressure-head" style="grid-template-columns: 1.4fr repeat({{ group.pressure_matrix.bars|length }}, minmax(90px, 1fr));">
+            <span>CCN</span>
+            {% for bar in group.pressure_matrix.bars %}<span>{{ bar }}</span>{% endfor %}
+          </div>
+          {% for row in group.pressure_matrix.rows %}
+            <div class="pressure-row" style="grid-template-columns: 1.4fr repeat({{ group.pressure_matrix.bars|length }}, minmax(90px, 1fr));">
+              <p>{{ row.name }}</p>
+              {% for field in row.cells %}
+                <div>{% if field %}{% include "jobcards/input.html" %}{% else %}<span class="muted">—</span>{% endif %}</div>
+              {% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+        {% if group.pressure_matrix.leader %}
+          <label class="field pressure-leader">
+            <span class="field-label">{{ group.pressure_matrix.leader.label }}</span>
+            {% include "jobcards/input.html" with field=group.pressure_matrix.leader %}
+          </label>
+        {% endif %}
+      {% elif group.belt_notes %}
+        {% for note in group.belt_notes %}
+          <div class="belt-chart">{% if note.help_text %}{% if note.help_text|slice:":11" == "belt_chart|" %}{{ note.help_text|slice:"11:" }}{% else %}{{ note.help_text }}{% endif %}{% else %}{{ note.label }}{% endif %}</div>
+        {% endfor %}
+        <div class="sheet-grid">
+          {% for field in group.fields %}
+            <label class="field"><span class="field-label">{{ field.label }}{% if field.unit %} ({{ field.unit }}){% endif %}</span>{% include "jobcards/input.html" %}</label>
+          {% endfor %}
+        </div>
+      {% elif group.name == "Assembly parts" or group.name == "General check" %}
         <div class="sheet-grid">
           {% for field in group.fields %}
             <label class="field"><span class="field-label">{{ field.label }}</span>{% include "jobcards/input.html" %}</label>

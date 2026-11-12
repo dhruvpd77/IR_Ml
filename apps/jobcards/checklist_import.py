@@ -220,9 +220,22 @@ def parse_sheet(worksheet, sheet_name):
     }
 
 
+def _pack_field_extra(field_type, extra=""):
+    extra = extra or ""
+    if field_type == "radio":
+        return [item.strip() for item in extra.split("|") if item.strip()], ""
+    if extra.startswith("help:"):
+        return [], extra[5:][:240]
+    if extra.startswith("belt_chart|") or extra.startswith("press|"):
+        return [], extra[:240]
+    return [], ""
+
+
 def _write_fields(template, fields):
-    JobCardField.objects.bulk_create(
-        [
+    created = []
+    for index, (key, section, label, field_type, required, unit, extra) in enumerate(fields, start=1):
+        options, help_text = _pack_field_extra(field_type, extra)
+        created.append(
             JobCardField(
                 template=template,
                 field_key=key,
@@ -231,12 +244,26 @@ def _write_fields(template, fields):
                 field_type=field_type,
                 required=required,
                 unit=unit,
-                options=[item.strip() for item in extra.split("|") if item.strip()] if field_type == "radio" and extra else [],
+                options=options,
+                help_text=help_text,
                 sort_order=index,
             )
-            for index, (key, section, label, field_type, required, unit, extra) in enumerate(fields, start=1)
-        ]
-    )
+        )
+    JobCardField.objects.bulk_create(created)
+
+
+def _field_extra_for_fingerprint(field_type, options=None, help_text="", extra=""):
+    if field_type == "radio":
+        if extra:
+            return extra
+        return "|".join(options or [])
+    if extra:
+        return extra
+    if help_text:
+        if help_text.startswith("press|") or help_text.startswith("belt_chart|"):
+            return help_text
+        return f"help:{help_text}"
+    return ""
 
 
 def _field_fingerprint(fields):
@@ -260,7 +287,7 @@ def upsert_phase_template(phase_code, checklist_key, name, fields, description="
         for field in existing.fields.filter(is_active=True).order_by("sort_order"):
             if field.field_key == "testing_video":
                 continue
-            extra = "|".join(field.options or []) if field.field_type == "radio" else ""
+            extra = _field_extra_for_fingerprint(field.field_type, field.options, field.help_text)
             current.append(
                 (field.field_key, field.section, field.label, field.field_type, bool(field.required), field.unit or "", extra)
             )
