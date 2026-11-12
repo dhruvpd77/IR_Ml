@@ -45,24 +45,41 @@ def _stem_key(name: str) -> str:
     return re.sub(r"\s+", " ", text).casefold()
 
 
+def _iter_word_dirs(folder: Path):
+    """Search the folder plus committed/local conversion caches."""
+    yield folder
+    for name in ("_converted", ".converted"):
+        nested = folder / name
+        if nested.is_dir():
+            yield nested
+
+
 def find_word_file(folder: Path, job_card_key: str) -> Path | None:
     wanted = _stem_key(job_card_key)
     if not wanted or not folder.is_dir():
         return None
     candidates = []
-    for path in folder.iterdir():
-        if not path.is_file():
-            continue
-        if path.suffix.lower() not in {".doc", ".docx"}:
-            continue
-        if path.name.startswith("~"):
-            continue
-        if _stem_key(path.name) == wanted:
-            candidates.append(path)
+    for search in _iter_word_dirs(folder):
+        for path in search.iterdir():
+            if not path.is_file():
+                continue
+            if path.suffix.lower() not in {".doc", ".docx"}:
+                continue
+            if path.name.startswith("~"):
+                continue
+            if _stem_key(path.name) == wanted:
+                candidates.append(path)
     if not candidates:
         return None
-    # Prefer .docx over .doc when both exist.
-    candidates.sort(key=lambda p: (0 if p.suffix.lower() == ".docx" else 1, len(p.name), p.name.lower()))
+    # Prefer .docx (works on Linux/PythonAnywhere) over legacy .doc.
+    candidates.sort(
+        key=lambda p: (
+            0 if p.suffix.lower() == ".docx" else 1,
+            0 if p.parent.name in {"_converted", ".converted"} else 1,
+            len(p.name),
+            p.name.lower(),
+        )
+    )
     return candidates[0]
 
 
@@ -95,6 +112,29 @@ def _convert_doc_to_docx(src: Path, dest: Path) -> Path:
     return dest
 
 
+def _find_cached_docx(path: Path, folders: list[Path | None]) -> Path | None:
+    """Match converted .docx by stem, ignoring trailing (1) copy suffixes."""
+    wanted = _stem_key(path.stem)
+    for folder in folders:
+        if not folder:
+            continue
+        folder = Path(folder)
+        if not folder.is_dir():
+            continue
+        exact = folder / f"{path.stem}.docx"
+        if exact.exists() and exact.stat().st_size > 0:
+            return exact
+        clean = re.sub(r"\s*\(\d+\)\s*$", "", path.stem).strip()
+        if clean and clean != path.stem:
+            cleaned = folder / f"{clean}.docx"
+            if cleaned.exists() and cleaned.stat().st_size > 0:
+                return cleaned
+        for candidate in folder.glob("*.docx"):
+            if _stem_key(candidate.stem) == wanted and candidate.stat().st_size > 0:
+                return candidate
+    return None
+
+
 def ensure_docx(path: Path, cache_dir: Path | None = None) -> Path:
     path = Path(path)
     if path.suffix.lower() == ".docx":
@@ -102,18 +142,21 @@ def ensure_docx(path: Path, cache_dir: Path | None = None) -> Path:
     if path.suffix.lower() != ".doc":
         raise RuntimeError(f"Unsupported Word file type: {path.suffix}")
     # Prefer already-converted .docx (needed on Linux / PythonAnywhere — no Word COM).
-    for folder in (
-        cache_dir,
-        path.parent / "_converted",
-        path.parent / ".converted",
-    ):
-        if not folder:
-            continue
-        cached = Path(folder) / f"{path.stem}.docx"
-        if cached.exists() and cached.stat().st_size > 0:
-            return cached
-    cache = Path(cache_dir) if cache_dir else (path.parent / "_converted")
-    return _convert_doc_to_docx(path, cache / f"{path.stem}.docx")
+    root = path.parent if path.parent.name not in {"_converted", ".converted"} else path.parent.parent
+    cached = _find_cached_docx(
+        path,
+        [
+            cache_dir,
+            root / "_converted",
+            root / ".converted",
+            path.parent,
+        ],
+    )
+    if cached is not None:
+        return cached
+    cache = Path(cache_dir) if cache_dir else (root / "_converted")
+    clean_stem = re.sub(r"\s*\(\d+\)\s*$", "", path.stem).strip() or path.stem
+    return _convert_doc_to_docx(path, cache / f"{clean_stem}.docx")
 
 
 def _unique_cells(row) -> list[str]:
@@ -369,7 +412,7 @@ def import_word_job_cards(folder: Path | None = None, keys: list[str] | None = N
                 details.append({"key": key, "status": "missing_file"})
                 continue
             try:
-                docx_path = ensure_docx(source, folder / ".converted")
+                docx_path = ensure_docx(source, folder / "_converted")
                 parsed = parse_word_document(docx_path, key)
             except Exception as exc:
                 details.append({"key": key, "status": "error", "error": str(exc), "file": source.name})
