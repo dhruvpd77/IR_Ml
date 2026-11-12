@@ -1,16 +1,8 @@
-<a class="mq-chip tone-{{ machine.tone }}{% if machine.rework %} is-rework{% endif %}" href="{% url 'machines:detail' machine.id %}" title="{{ machine.caption }}">
-  <span class="mq-chip-dots" aria-hidden="true">
+<a class="floor-pill tone-{{ machine.tone }}{% if machine.rework %} is-rework{% endif %}" href="{% url 'machines:detail' machine.id %}" title="{{ machine.caption }}">
+  <span class="spot-dots" aria-hidden="true">
     {% for dot in machine.dots %}
       <i class="live-dot" style="--c: {{ dot.color }}" title="{{ dot.label }}"></i>
     {% endfor %}
   </span>
-  <span class="mq-chip-body">
-    <span class="mq-chip-id">{{ machine.id }}</span>
-    {% if machine.serial and machine.serial != "No serial" %}
-      <span class="mq-chip-meta">{{ machine.serial }}</span>
-    {% elif machine.model %}
-      <span class="mq-chip-meta">{{ machine.model }}</span>
-    {% endif %}
-  </span>
-  {% if machine.rework %}<em class="mq-chip-flag">RW</em>{% endif %}
+  <span class="pill-id">{{ machine.id }}</span>
 </a>

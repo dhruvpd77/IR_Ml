@@ -1757,10 +1757,38 @@ select.field-input {
   .card h2 { font-size: 20px; }
   .card h3 { font-size: 17px; }
 }
-.main:has(.mq-board) { height: 100vh; max-height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-.page:has(.mq-board) {
+.main:has(.shop) { height: 100vh; max-height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+.page:has(.shop) {
   flex: 1 1 auto;
   min-height: 0;
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 8px 14px 10px;
+}
+.page:has(.shop) .page-head,
+.page:has(.shop) .floor-filters,
+.page:has(.shop) .legend,
+.page:has(.shop) .shop { min-width: 0; max-width: 100%; }
+.page:has(.shop) .page-head,
+.page:has(.shop) .floor-filters,
+.page:has(.shop) .legend { flex: 0 0 auto; }
+.page:has(.shop) .floor-filters { margin: 0 0 6px; gap: 8px; }
+.page:has(.shop) .floor-filters select,
+.page:has(.shop) .floor-filters input { min-width: 150px; padding: 6px 10px; }
+.page:has(.shop) .page-head { margin: 0 0 4px; align-items: center; }
+.page:has(.shop) .page-head h1 { font-size: 22px; }
+.page:has(.shop) .legend { margin: 0 0 6px; }
+.page:has(.shop) .shop {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+.page:has(.shop) .shop-floor {
+  grid-template-rows: minmax(0, 1.7fr) minmax(0, .55fr) minmax(0, .85fr) minmax(0, .55fr);
+}
+.page:has(.mq-board) {
   max-width: none;
   display: flex;
   flex-direction: column;
@@ -1770,17 +1798,18 @@ select.field-input {
 .page:has(.mq-board) .mq-board {
   flex: 1 1 auto;
   min-height: 0;
-  min-width: 0;
-  max-width: 100%;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 .page:has(.mq-board) .mq-top,
-.page:has(.mq-board) .mq-toolbar,
-.page:has(.mq-board) .mq-pipeline { flex: 0 0 auto; min-width: 0; }
-.page:has(.mq-board) .mq-map { flex: 1 1 auto; min-width: 0; }
-.page:fullscreen:has(.mq-board),
-.page:-webkit-full-screen:has(.mq-board),
-.page.is-fullscreen:has(.mq-board) {
+.page:has(.mq-board) .mq-filters,
+.page:has(.mq-board) .mq-pipeline,
+.page:has(.mq-board) .mq-legend { flex: 0 0 auto; }
+.page:has(.mq-board) .mq-map { flex: 1 1 auto; }
+.page:fullscreen:has(.shop),
+.page:-webkit-full-screen:has(.shop),
+.page.is-fullscreen:has(.shop) {
   position: fixed;
   inset: 0;
   z-index: 80;
@@ -1795,23 +1824,57 @@ select.field-input {
   padding: 12px 18px 14px;
   background: #f4f6f8;
 }
-.page:fullscreen:has(.mq-board) .fs-brand,
-.page:-webkit-full-screen:has(.mq-board) .fs-brand,
-.page.is-fullscreen:has(.mq-board) .fs-brand {
+.page:fullscreen:has(.shop) .fs-brand,
+.page:-webkit-full-screen:has(.shop) .fs-brand,
+.page.is-fullscreen:has(.shop) .fs-brand {
   display: flex;
   flex: 0 0 auto;
   margin: 0 0 8px;
   padding: 6px 12px;
 }
-.page:fullscreen:has(.mq-board) .fs-brand img,
-.page:-webkit-full-screen:has(.mq-board) .fs-brand img,
-.page.is-fullscreen:has(.mq-board) .fs-brand img { height: 42px; }
-@media (max-width: 900px) {
-  .main:has(.mq-board) { height: auto; max-height: none; overflow: visible; }
-  .page:has(.mq-board) { overflow: visible; height: auto; }
-  .page:has(.mq-board) .mq-board { overflow: visible; height: auto; }
-  .page:has(.mq-board) .mq-map { overflow: visible; }
+.page:fullscreen:has(.shop) .fs-brand img,
+.page:-webkit-full-screen:has(.shop) .fs-brand img,
+.page.is-fullscreen:has(.shop) .fs-brand img { height: 42px; }
+.page:fullscreen:has(.shop) .page-head,
+.page:-webkit-full-screen:has(.shop) .page-head,
+.page.is-fullscreen:has(.shop) .page-head { margin: 0 0 6px; }
+.page:fullscreen:has(.shop) .page-head h1,
+.page:-webkit-full-screen:has(.shop) .page-head h1,
+.page.is-fullscreen:has(.shop) .page-head h1 { font-size: 28px; }
+.page:fullscreen:has(.shop) .legend,
+.page:-webkit-full-screen:has(.shop) .legend,
+.page.is-fullscreen:has(.shop) .legend { flex: 0 0 auto; margin: 0 0 8px; font-size: 15px; }
+.page:fullscreen:has(.shop) .shop,
+.page:-webkit-full-screen:has(.shop) .shop,
+.page.is-fullscreen:has(.shop) .shop {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1.7fr) minmax(0, .55fr) minmax(0, .85fr) minmax(0, .55fr);
+  gap: 10px;
+  overflow: hidden;
 }
+.page:fullscreen:has(.shop) .band-head,
+.page:-webkit-full-screen:has(.shop) .band-head,
+.page.is-fullscreen:has(.shop) .band-head { padding: 8px 14px; }
+.page:fullscreen:has(.shop) .band-head p,
+.page:-webkit-full-screen:has(.shop) .band-head p,
+.page.is-fullscreen:has(.shop) .band-head p { font-size: 16px; }
+.page:fullscreen:has(.shop) .lane-name strong,
+.page:-webkit-full-screen:has(.shop) .lane-name strong,
+.page.is-fullscreen:has(.shop) .lane-name strong { font-size: 18px; }
+.page:fullscreen:has(.shop) .cell-name,
+.page:-webkit-full-screen:has(.shop) .cell-name,
+.page.is-fullscreen:has(.shop) .cell-name { font-size: 16px; }
+.page:fullscreen:has(.shop) .pill-id,
+.page:-webkit-full-screen:has(.shop) .pill-id,
+.page.is-fullscreen:has(.shop) .pill-id { font-size: 18px; }
+.page:fullscreen:has(.shop) .floor-pill .live-dot,
+.page:-webkit-full-screen:has(.shop) .floor-pill .live-dot,
+.page.is-fullscreen:has(.shop) .floor-pill .live-dot { width: 18px; height: 18px; }
+.page:fullscreen:has(.shop) .plan-lane,
+.page:-webkit-full-screen:has(.shop) .plan-lane,
+.page.is-fullscreen:has(.shop) .plan-lane { grid-template-columns: 168px minmax(0, 1fr); }
 @media print {
   .sidebar, .topbar, .btn, .btn-primary, .btn-ghost, .no-print { display: none !important; }
   .main { margin: 0; }

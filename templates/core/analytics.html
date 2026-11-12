@@ -1,179 +1,146 @@
 {% extends "base.html" %}
 {% block title %}Machine analytics{% endblock %}
 {% block content %}
-<div class="mq-board" data-live-analytics data-live-seconds="30">
-  <header class="mq-top">
-    <div class="mq-brand">
-      <p class="mq-eyebrow">Live floor map</p>
-      <h1>Machine analytics</h1>
-    </div>
-    <div class="mq-top-tools">
-      <p class="mq-pulse" data-live-badge>
-        <i class="mq-pulse-dot" aria-hidden="true"></i>
-        Live · updates every 30 sec
-      </p>
-      <div class="mq-onfloor">
-        <span>On floor</span>
-        <strong data-live-onfloor>{{ on_floor }}</strong>
-      </div>
-      {% include "includes/fullscreen.html" %}
-    </div>
-  </header>
+<div class="page-head floor-headbar" data-live-analytics data-live-seconds="30">
+  <div>
+    <h1>Machine analytics</h1>
+    <p class="live-badge" data-live-badge>Live · updates every 30 sec</p>
+  </div>
+  {% include "includes/fullscreen.html" %}
+</div>
 
-  <div class="mq-toolbar">
-    <form class="mq-filters" method="get">
-      <label>Month
-        <select name="month" onchange="this.form.date.value=''; this.form.submit()">
-          <option value="">All months</option>
-          {% for item in months %}
-            <option value="{{ item.value }}" {% if selected_month == item.value %}selected{% endif %}>{{ item.label }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label>Date
-        <input type="date" name="date" value="{{ selected_date }}" onchange="this.form.month.value=''; this.form.submit()">
-      </label>
-      <label>Shift
-        <select name="shift" onchange="this.form.submit()">
-          <option value="">All shifts</option>
-          {% for code, label in shifts %}
-            <option value="{{ code }}" {% if selected_shift == code %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </label>
-    </form>
-    <div class="mq-legend">
-      {% for item in legend %}
-        <span><i class="live-dot" style="--c: {{ item.color }}"></i>{{ item.label }}</span>
+<form class="dash-filters floor-filters" method="get">
+  <label>Month
+    <select name="month" onchange="this.form.date.value=''; this.form.submit()">
+      <option value="">All months</option>
+      {% for item in months %}
+        <option value="{{ item.value }}" {% if selected_month == item.value %}selected{% endif %}>{{ item.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Date
+    <input type="date" name="date" value="{{ selected_date }}" onchange="this.form.month.value=''; this.form.submit()">
+  </label>
+  <label>Shift
+    <select name="shift" onchange="this.form.submit()">
+      <option value="">All shifts</option>
+      {% for code, label in shifts %}
+        <option value="{{ code }}" {% if selected_shift == code %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+</form>
+
+<div class="legend">
+  {% for item in legend %}
+    <span class="legend-item"><i class="live-dot" style="--c: {{ item.color }}"></i>{{ item.label }}</span>
+  {% endfor %}
+  <span class="heat-scale">
+    <i class="heat-swatch heat-0"></i>Empty
+    <i class="heat-swatch heat-1"></i>1
+    <i class="heat-swatch heat-2"></i>2
+    <i class="heat-swatch heat-3"></i>3–4
+    <i class="heat-swatch heat-4"></i>5+
+  </span>
+</div>
+
+<div class="shop shop-floor" data-live-shop>
+  <section class="shop-band">
+    <header class="band-head band-assembly">
+      <p>Assembly area</p>
+      <b data-live-assembly-count>{{ assembly_count }}</b>
+    </header>
+    <div class="assembly-lanes" data-live-assembly>
+      {% for line in lines %}
+        <div class="plan-lane" data-line-code="{{ line.code }}">
+          <div class="lane-name lane-{{ line.tone }}">
+            <strong>{{ line.label }}</strong>
+          </div>
+          <div class="lane-squares">
+            {% for box in line.boxes %}
+              <article class="station-square heat-{{ box.heat }}" data-station-id="{{ box.station.pk }}">
+                <div class="cell-top">
+                  <strong class="cell-name">{{ box.station.name }}</strong>
+                  <b data-box-count>{{ box.count }}</b>
+                </div>
+                <div class="dot-board" data-box-machines>
+                  {% for machine in box.machines %}
+                    {% include "includes/floor_machine.html" %}
+                  {% endfor %}
+                </div>
+              </article>
+            {% endfor %}
+          </div>
+        </div>
       {% endfor %}
     </div>
-  </div>
+  </section>
 
-  <nav class="mq-pipeline" aria-label="Floor totals">
-    <a class="mq-stage is-assembly" href="#mq-assembly">
-      <span>Assembly</span>
-      <strong data-live-assembly-count>{{ assembly_count }}</strong>
-    </a>
-    <i class="mq-arrow" aria-hidden="true"></i>
-    <a class="mq-stage is-waiting" href="#mq-waiting">
-      <span>Waiting</span>
-      <strong data-live-waiting-count>{{ waiting_count }}</strong>
-    </a>
-    <i class="mq-arrow" aria-hidden="true"></i>
-    <a class="mq-stage is-testing" href="#mq-testing">
-      <span>Testing</span>
-      <strong data-live-testing-count>{{ testing_count }}</strong>
-    </a>
-    <i class="mq-arrow" aria-hidden="true"></i>
-    <a class="mq-stage is-eol" href="#mq-eol">
-      <span>EOL</span>
-      <strong data-live-eol-count>{{ eol_count }}</strong>
-    </a>
-  </nav>
+  <section class="shop-band">
+    <header class="band-head band-waiting">
+      <p>Waiting Area</p>
+      <b data-live-waiting-count>{{ waiting_count }}</b>
+    </header>
+    <article class="waiting-rect heat-{{ waiting_heat }}" data-live-waiting>
+      <div class="waiting-mark" aria-hidden="true">
+        <i data-lucide="package"></i>
+      </div>
+      <div class="waiting-copy">
+        <strong>Waiting Area</strong>
+        <span>Machines awaiting next process (Testing)</span>
+      </div>
+      <div class="dot-board" data-box-machines>
+        {% for machine in waiting_machines %}
+          {% include "includes/floor_machine.html" %}
+        {% empty %}
+          <p class="floor-empty">No machines waiting</p>
+        {% endfor %}
+      </div>
+    </article>
+  </section>
 
-  <div class="mq-map" data-live-shop>
-    <section class="mq-zone mq-zone-assembly" id="mq-assembly">
-      <header class="mq-zone-head">
-        <div>
-          <p>Station map</p>
-          <h2>Assembly area</h2>
-        </div>
-        <b data-live-assembly-count>{{ assembly_count }}</b>
-      </header>
-      <div class="mq-lanes" data-live-assembly>
-        {% for line in lines %}
-          <div class="mq-lane" data-line-code="{{ line.code }}">
-            <div class="mq-lane-label lane-{{ line.tone }}">
-              <strong>{{ line.label }}</strong>
-              <span data-line-count>{{ line.count }}</span>
-            </div>
-            <div class="mq-stations{% if line.boxes|length == 3 %} mq-stations-3{% elif line.boxes|length == 1 %} mq-stations-wide{% endif %}">
-              {% for box in line.boxes %}
-                <article class="mq-cell heat-{{ box.heat }}{% if box.count %} is-busy{% else %} is-free{% endif %}" data-station-id="{{ box.station.pk }}">
-                  <div class="mq-cell-top">
-                    <strong>{{ box.station.name }}</strong>
-                    <b data-box-count>{{ box.count }}</b>
-                  </div>
-                  <div class="mq-machines" data-box-machines>
-                    {% for machine in box.machines %}
-                      {% include "includes/floor_machine.html" %}
-                    {% empty %}
-                      <p class="mq-empty">Free</p>
-                    {% endfor %}
-                  </div>
-                </article>
-              {% endfor %}
-            </div>
+  <section class="shop-band">
+    <header class="band-head band-testing">
+      <p>Testing area</p>
+      <b data-live-testing-count>{{ testing_count }}</b>
+    </header>
+    <div class="test-row" data-live-testing>
+      {% for area in test_areas %}
+        <article class="test-rect {{ area.tone }} heat-{{ area.heat }}" data-test-area="{{ area.name }}">
+          <div class="cell-top">
+            <strong class="cell-name">
+              <i data-lucide="gauge" class="cell-icon"></i>
+              Testing area {{ forloop.counter }}
+            </strong>
+            <b data-box-count>{{ area.count }}</b>
           </div>
+          <div class="dot-board" data-box-machines>
+            {% for machine in area.machines %}
+              {% include "includes/floor_machine.html" %}
+            {% empty %}
+              <p class="floor-empty">Free bay</p>
+            {% endfor %}
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="shop-band">
+    <header class="band-head band-eol">
+      <p>EOL</p>
+      <b data-live-eol-count>{{ eol_count }}</b>
+    </header>
+    <article class="eol-rect heat-{{ eol_heat }}" data-live-eol>
+      <div class="dot-board" data-box-machines>
+        {% for machine in eol_machines %}
+          {% include "includes/floor_machine.html" %}
+        {% empty %}
+          <p class="floor-empty">EOL clear</p>
         {% endfor %}
       </div>
-    </section>
-
-    <section class="mq-zone mq-zone-waiting" id="mq-waiting">
-      <header class="mq-zone-head">
-        <div>
-          <p>Queue before testing</p>
-          <h2>Waiting area</h2>
-        </div>
-        <b data-live-waiting-count>{{ waiting_count }}</b>
-      </header>
-      <article class="mq-pool heat-{{ waiting_heat }}{% if waiting_count %} is-busy{% else %} is-free{% endif %}" data-live-waiting>
-        <div class="mq-machines" data-box-machines>
-          {% for machine in waiting_machines %}
-            {% include "includes/floor_machine.html" %}
-          {% empty %}
-            <p class="mq-empty">No machines waiting</p>
-          {% endfor %}
-        </div>
-      </article>
-    </section>
-
-    <section class="mq-zone mq-zone-testing" id="mq-testing">
-      <header class="mq-zone-head">
-        <div>
-          <p>Test bays</p>
-          <h2>Testing area</h2>
-        </div>
-        <b data-live-testing-count>{{ testing_count }}</b>
-      </header>
-      <div class="mq-bays" data-live-testing>
-        {% for area in test_areas %}
-          <article class="mq-cell mq-bay {{ area.tone }} heat-{{ area.heat }}{% if area.count %} is-busy{% else %} is-free{% endif %}" data-test-area="{{ area.name }}">
-            <div class="mq-cell-top">
-              <strong>{{ area.name }}</strong>
-              <b data-box-count>{{ area.count }}</b>
-            </div>
-            <div class="mq-machines" data-box-machines>
-              {% for machine in area.machines %}
-                {% include "includes/floor_machine.html" %}
-              {% empty %}
-                <p class="mq-empty">Free bay</p>
-              {% endfor %}
-            </div>
-          </article>
-        {% endfor %}
-      </div>
-    </section>
-
-    <section class="mq-zone mq-zone-eol" id="mq-eol">
-      <header class="mq-zone-head">
-        <div>
-          <p>Finished on line</p>
-          <h2>End of line</h2>
-        </div>
-        <b data-live-eol-count>{{ eol_count }}</b>
-      </header>
-      <article class="mq-pool heat-{{ eol_heat }}{% if eol_count %} is-busy{% else %} is-free{% endif %}" data-live-eol>
-        <div class="mq-machines" data-box-machines>
-          {% for machine in eol_machines %}
-            {% include "includes/floor_machine.html" %}
-          {% empty %}
-            <p class="mq-empty">EOL clear</p>
-          {% endfor %}
-        </div>
-      </article>
-    </section>
-  </div>
+    </article>
+  </section>
 </div>
 {% endblock %}
 {% block extra_js %}
@@ -188,23 +155,17 @@
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
-  const chipHtml = (machine) => {
+  const pillHtml = (machine) => {
     const dots = (machine.dots || []).map((dot) => (
       `<i class="live-dot" style="--c: ${esc(dot.color)}" title="${esc(dot.label)}"></i>`
     )).join("");
-    const serial = machine.serial && machine.serial !== "No serial" ? machine.serial : "";
-    const meta = serial || machine.model || "";
-    const rework = machine.rework ? `<em class="mq-chip-flag">RW</em>` : "";
-    return `<a class="mq-chip tone-${esc(machine.tone)}${machine.rework ? " is-rework" : ""}" href="${esc(machine.url)}" title="${esc(machine.caption)}"><span class="mq-chip-dots" aria-hidden="true">${dots}</span><span class="mq-chip-body"><span class="mq-chip-id">${esc(machine.id)}</span>${meta ? `<span class="mq-chip-meta">${esc(meta)}</span>` : ""}</span>${rework}</a>`;
+    const rework = machine.rework ? " is-rework" : "";
+    return `<a class="floor-pill tone-${esc(machine.tone)}${rework}" href="${esc(machine.url)}" title="${esc(machine.caption)}"><span class="spot-dots" aria-hidden="true">${dots}</span><span class="pill-id">${esc(machine.id)}</span></a>`;
   };
 
-  const setHeat = (node, heat, busy) => {
+  const setHeat = (node, heat) => {
     if (!node) return;
-    node.className = node.className
-      .replace(/\bheat-\d\b/g, "")
-      .replace(/\bis-busy\b/g, "")
-      .replace(/\bis-free\b/g, "")
-      .trim() + ` heat-${Number(heat) || 0}${busy ? " is-busy" : " is-free"}`;
+    node.className = node.className.replace(/\bheat-\d\b/g, "").trim() + ` heat-${Number(heat) || 0}`;
   };
 
   const fillBox = (node, count, heat, machines, emptyText) => {
@@ -212,11 +173,11 @@
     const countNode = node.querySelector("[data-box-count]");
     const board = node.querySelector("[data-box-machines]");
     if (countNode) countNode.textContent = count;
-    setHeat(node, heat, Number(count) > 0);
+    setHeat(node, heat);
     if (board) {
       board.innerHTML = (machines || []).length
-        ? (machines || []).map(chipHtml).join("")
-        : `<p class="mq-empty">${esc(emptyText || "Free")}</p>`;
+        ? (machines || []).map(pillHtml).join("")
+        : `<p class="floor-empty">${esc(emptyText || "Empty")}</p>`;
     }
   };
 
@@ -224,31 +185,25 @@
     const setText = (sel, value) => {
       document.querySelectorAll(sel).forEach((node) => { node.textContent = value; });
     };
-    setText("[data-live-onfloor]", payload.on_floor);
     setText("[data-live-assembly-count]", payload.assembly_count);
     setText("[data-live-waiting-count]", payload.waiting_count);
     setText("[data-live-testing-count]", payload.testing_count);
     setText("[data-live-eol-count]", payload.eol_count);
 
     (payload.lines || []).forEach((line) => {
-      const lane = document.querySelector(`[data-line-code="${CSS.escape(line.code)}"]`);
-      if (lane) {
-        const lineCount = lane.querySelector("[data-line-count]");
-        if (lineCount) lineCount.textContent = line.count;
-      }
       (line.boxes || []).forEach((box) => {
-        fillBox(document.querySelector(`[data-station-id="${box.station_id}"]`), box.count, box.heat, box.machines, "Free");
+        fillBox(document.querySelector(`[data-station-id="${box.station_id}"]`), box.count, box.heat, box.machines, "");
       });
     });
 
     const waiting = document.querySelector("[data-live-waiting]");
     if (waiting) {
-      setHeat(waiting, payload.waiting_heat, Number(payload.waiting_count) > 0);
+      setHeat(waiting, payload.waiting_heat);
       const board = waiting.querySelector("[data-box-machines]");
       if (board) {
         board.innerHTML = (payload.waiting_machines || []).length
-          ? (payload.waiting_machines || []).map(chipHtml).join("")
-          : `<p class="mq-empty">No machines waiting</p>`;
+          ? (payload.waiting_machines || []).map(pillHtml).join("")
+          : `<p class="floor-empty">No machines waiting</p>`;
       }
     }
 
@@ -258,19 +213,17 @@
 
     const eol = document.querySelector("[data-live-eol]");
     if (eol) {
-      setHeat(eol, payload.eol_heat, Number(payload.eol_count) > 0);
+      setHeat(eol, payload.eol_heat);
       const board = eol.querySelector("[data-box-machines]");
       if (board) {
         board.innerHTML = (payload.eol_machines || []).length
-          ? (payload.eol_machines || []).map(chipHtml).join("")
-          : `<p class="mq-empty">EOL clear</p>`;
+          ? (payload.eol_machines || []).map(pillHtml).join("")
+          : `<p class="floor-empty">EOL clear</p>`;
       }
     }
 
     const badge = document.querySelector("[data-live-badge]");
-    if (badge && payload.updated) {
-      badge.innerHTML = `<i class="mq-pulse-dot" aria-hidden="true"></i>Live · updated ${esc(payload.updated)}`;
-    }
+    if (badge && payload.updated) badge.textContent = `Live · updated ${payload.updated}`;
     if (window.lucide) window.lucide.createIcons();
   };
 
