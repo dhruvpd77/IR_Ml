@@ -31,21 +31,14 @@
   </label>
 </form>
 
-<div class="legend">
+<div class="legend plain-legend">
   {% for item in legend %}
     <span class="legend-item"><i class="live-dot" style="--c: {{ item.color }}"></i>{{ item.label }}</span>
   {% endfor %}
-  <span class="heat-scale">
-    <i class="heat-swatch heat-0"></i>Empty
-    <i class="heat-swatch heat-1"></i>1
-    <i class="heat-swatch heat-2"></i>2
-    <i class="heat-swatch heat-3"></i>3–4
-    <i class="heat-swatch heat-4"></i>5+
-  </span>
 </div>
 
-<div class="shop shop-floor" data-live-shop>
-  <section class="shop-band">
+<div class="shop shop-floor shop-plain" data-live-shop>
+  <section class="shop-band band-asm">
     <header class="band-head band-assembly">
       <p>Assembly area</p>
       <b data-live-assembly-count>{{ assembly_count }}</b>
@@ -58,14 +51,18 @@
           </div>
           <div class="lane-squares">
             {% for box in line.boxes %}
-              <article class="station-square heat-{{ box.heat }}" data-station-id="{{ box.station.pk }}">
+              <article class="station-square {% if box.count %}is-occupied{% else %}is-empty{% endif %}" data-station-id="{{ box.station.pk }}">
                 <div class="cell-top">
                   <strong class="cell-name">{{ box.station.name }}</strong>
-                  <b data-box-count>{{ box.count }}</b>
+                  <b data-box-count {% if not box.count %}hidden{% endif %}>{{ box.count }}</b>
                 </div>
                 <div class="dot-board" data-box-machines>
                   {% for machine in box.machines %}
-                    {% include "includes/floor_machine.html" %}
+                    {% if forloop.counter0 < 1 %}
+                      {% include "includes/floor_machine.html" %}
+                    {% endif %}
+                  {% empty %}
+                    <p class="floor-empty">—</p>
                   {% endfor %}
                 </div>
               </article>
@@ -76,67 +73,58 @@
     </div>
   </section>
 
-  <section class="shop-band">
+  <section class="shop-band band-wait">
     <header class="band-head band-waiting">
-      <p>Waiting Area</p>
+      <p>Waiting area</p>
       <b data-live-waiting-count>{{ waiting_count }}</b>
     </header>
-    <article class="waiting-rect heat-{{ waiting_heat }}" data-live-waiting>
-      <div class="waiting-mark" aria-hidden="true">
-        <i data-lucide="package"></i>
-      </div>
-      <div class="waiting-copy">
-        <strong>Waiting Area</strong>
-        <span>Machines awaiting next process (Testing)</span>
-      </div>
-      <div class="dot-board" data-box-machines>
+    <article class="waiting-rect board-slot {% if waiting_count %}is-occupied{% else %}is-empty{% endif %}" data-live-waiting>
+      <div class="dot-board zone-board" data-box-machines>
         {% for machine in waiting_machines %}
           {% include "includes/floor_machine.html" %}
-        {% empty %}
-          <p class="floor-empty">No machines waiting</p>
         {% endfor %}
       </div>
     </article>
   </section>
 
-  <section class="shop-band">
+  <section class="shop-band band-test">
     <header class="band-head band-testing">
       <p>Testing area</p>
       <b data-live-testing-count>{{ testing_count }}</b>
     </header>
     <div class="test-row" data-live-testing>
       {% for area in test_areas %}
-        <article class="test-rect {{ area.tone }} heat-{{ area.heat }}" data-test-area="{{ area.name }}">
+        <article class="test-rect board-slot {% if area.count %}is-occupied{% else %}is-empty{% endif %}" data-test-area="{{ area.name }}">
           <div class="cell-top">
-            <strong class="cell-name">
-              <i data-lucide="gauge" class="cell-icon"></i>
-              Testing area {{ forloop.counter }}
-            </strong>
-            <b data-box-count>{{ area.count }}</b>
+            <strong class="cell-name">Testing {{ forloop.counter }}</strong>
+            <b data-box-count {% if not area.count %}hidden{% endif %}>{{ area.count }}</b>
           </div>
           <div class="dot-board" data-box-machines>
             {% for machine in area.machines %}
-              {% include "includes/floor_machine.html" %}
+              {% if forloop.counter0 < 1 %}
+                {% include "includes/floor_machine.html" %}
+              {% endif %}
             {% empty %}
-              <p class="floor-empty">Free bay</p>
+              <p class="floor-empty">—</p>
             {% endfor %}
+            {% if area.machines|length > 1 %}
+              <span class="more-chip">+{{ area.machines|length|add:"-1" }}</span>
+            {% endif %}
           </div>
         </article>
       {% endfor %}
     </div>
   </section>
 
-  <section class="shop-band">
+  <section class="shop-band band-end">
     <header class="band-head band-eol">
-      <p>EOL</p>
+      <p>End of line (EOL)</p>
       <b data-live-eol-count>{{ eol_count }}</b>
     </header>
-    <article class="eol-rect heat-{{ eol_heat }}" data-live-eol>
-      <div class="dot-board" data-box-machines>
+    <article class="eol-rect board-slot {% if eol_count %}is-occupied{% else %}is-empty{% endif %}" data-live-eol>
+      <div class="dot-board zone-board" data-box-machines>
         {% for machine in eol_machines %}
           {% include "includes/floor_machine.html" %}
-        {% empty %}
-          <p class="floor-empty">EOL clear</p>
         {% endfor %}
       </div>
     </article>
@@ -163,22 +151,43 @@
     return `<a class="floor-pill tone-${esc(machine.tone)}${rework}" href="${esc(machine.url)}" title="${esc(machine.caption)}"><span class="spot-dots" aria-hidden="true">${dots}</span><span class="pill-id">${esc(machine.label || machine.id)}</span></a>`;
   };
 
-  const setHeat = (node, heat) => {
+  const setOccupied = (node, count) => {
     if (!node) return;
-    node.className = node.className.replace(/\bheat-\d\b/g, "").trim() + ` heat-${Number(heat) || 0}`;
+    node.classList.toggle("is-occupied", count > 0);
+    node.classList.toggle("is-empty", !(count > 0));
+    const countNode = node.querySelector("[data-box-count]");
+    if (countNode) {
+      countNode.textContent = count;
+      countNode.hidden = !(count > 0);
+    }
   };
 
-  const fillBox = (node, count, heat, machines, emptyText) => {
+  const fillSingle = (node, count, machines, emptyText) => {
     if (!node) return;
-    const countNode = node.querySelector("[data-box-count]");
+    setOccupied(node, count);
     const board = node.querySelector("[data-box-machines]");
-    if (countNode) countNode.textContent = count;
-    setHeat(node, heat);
-    if (board) {
-      board.innerHTML = (machines || []).length
-        ? (machines || []).map(pillHtml).join("")
-        : `<p class="floor-empty">${esc(emptyText || "Empty")}</p>`;
+    if (!board) return;
+    const list = machines || [];
+    if (!list.length) {
+      board.innerHTML = `<p class="floor-empty">${esc(emptyText || "—")}</p>`;
+      return;
     }
+    const first = pillHtml(list[0]);
+    const extra = list.length > 1 ? `<span class="more-chip">+${list.length - 1}</span>` : "";
+    board.innerHTML = first + extra;
+  };
+
+  const fillMany = (node, count, machines, emptyText) => {
+    if (!node) return;
+    setOccupied(node, count);
+    const board = node.querySelector("[data-box-machines]");
+    if (!board) return;
+    const list = machines || [];
+    if (!list.length) {
+      board.innerHTML = emptyText ? `<p class="floor-empty">${esc(emptyText)}</p>` : "";
+      return;
+    }
+    board.innerHTML = list.map(pillHtml).join("");
   };
 
   const applyLive = (payload) => {
@@ -192,35 +201,17 @@
 
     (payload.lines || []).forEach((line) => {
       (line.boxes || []).forEach((box) => {
-        fillBox(document.querySelector(`[data-station-id="${box.station_id}"]`), box.count, box.heat, box.machines, "");
+        fillSingle(document.querySelector(`[data-station-id="${box.station_id}"]`), box.count, box.machines, "—");
       });
     });
 
-    const waiting = document.querySelector("[data-live-waiting]");
-    if (waiting) {
-      setHeat(waiting, payload.waiting_heat);
-      const board = waiting.querySelector("[data-box-machines]");
-      if (board) {
-        board.innerHTML = (payload.waiting_machines || []).length
-          ? (payload.waiting_machines || []).map(pillHtml).join("")
-          : `<p class="floor-empty">No machines waiting</p>`;
-      }
-    }
+    fillMany(document.querySelector("[data-live-waiting]"), payload.waiting_count, payload.waiting_machines, "");
 
     (payload.test_areas || []).forEach((area) => {
-      fillBox(document.querySelector(`[data-test-area="${CSS.escape(area.name)}"]`), area.count, area.heat, area.machines, "Free bay");
+      fillSingle(document.querySelector(`[data-test-area="${CSS.escape(area.name)}"]`), area.count, area.machines, "—");
     });
 
-    const eol = document.querySelector("[data-live-eol]");
-    if (eol) {
-      setHeat(eol, payload.eol_heat);
-      const board = eol.querySelector("[data-box-machines]");
-      if (board) {
-        board.innerHTML = (payload.eol_machines || []).length
-          ? (payload.eol_machines || []).map(pillHtml).join("")
-          : `<p class="floor-empty">EOL clear</p>`;
-      }
-    }
+    fillMany(document.querySelector("[data-live-eol]"), payload.eol_count, payload.eol_machines, "");
 
     const badge = document.querySelector("[data-live-badge]");
     if (badge && payload.updated) badge.textContent = `Live · updated ${payload.updated}`;
